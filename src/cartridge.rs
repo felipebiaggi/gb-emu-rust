@@ -1,4 +1,4 @@
-use std::{fmt, u8};
+use std::{fmt, iter::OnceWith, u8};
 
 pub struct Cartridge {
     pub game_data: Vec<u8>,
@@ -10,7 +10,7 @@ pub struct Cartridge {
     pub cartridge_type: u8,
     pub rom_size: u8,
     pub ram_size: u8,
-    pub destination_code: u8,
+    pub destination_code: Destination,
     pub old_licensee_code: u8,
     pub mask_rom_version_number: u8,
     pub header_checksum: u8,
@@ -39,7 +39,7 @@ impl Cartridge {
 
         let ram_size = value[329];
 
-        let destination_code = value[330];
+        let destination_code = Destination::from(value[330]);
 
         let old_licensee_code = value[331];
 
@@ -80,7 +80,7 @@ impl fmt::Display for Cartridge {
         writeln!(format, "Cartridge Type:      {:#04X}", self.cartridge_type)?;
         writeln!(format, "ROM Size:            {:#04X}", self.rom_size)?;
         writeln!(format, "RAM Size:            {:#04X}", self.ram_size)?;
-        writeln!(format, "Destination Code:    {:#04X}", self.destination_code)?;
+        writeln!(format, "Destination Code:    {}", self.destination_code)?;
         writeln!(format, "Old Licensee Code:   {:#04X}", self.old_licensee_code)?;
         writeln!(format, "Mask ROM Version:    {:#04X}", self.mask_rom_version_number)?;
         writeln!(format, "Header Checksum:     {:#04X}", self.header_checksum)?;
@@ -89,3 +89,31 @@ impl fmt::Display for Cartridge {
         Ok(())
     } 
 }
+
+
+pub enum Destination {
+    Japan,
+    Overseas,
+    Unknown(u8),
+}
+
+impl From<u8> for Destination {
+    fn from(value: u8) -> Self {
+        match value {
+            0x00 => Destination::Japan,
+            0x01 => Destination::Overseas,
+            other => Destination::Unknown(other),
+        }
+    }    
+}
+
+impl fmt::Display for Destination {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Destination::Japan => write!(f, "Japan (0x00)"),
+            Destination::Overseas => write!(f, "Overseas (0x01)"),
+            Destination::Unknown(x) => write!(f, "Unknown (0x{:02X})", x),
+        }
+    }
+}
+
