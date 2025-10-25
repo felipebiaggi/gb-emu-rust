@@ -2,9 +2,12 @@ use std::env;
 use std::fs;
 use std::u8;
 
-use crate::cartridge::Cartridge;
-
 mod cartridge;
+mod cpu;
+
+use crate::cartridge::Cartridge;
+use crate::cpu::Cpu;
+
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -18,6 +21,8 @@ fn main() {
     };
 
     let cartridge = Cartridge::load(rom);
+    
+    let cpu = Cpu::new();
 
     println!("{}", cartridge);
 }
