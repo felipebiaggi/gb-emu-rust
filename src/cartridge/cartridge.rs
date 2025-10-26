@@ -1,6 +1,7 @@
 use std::{fmt, u8};
 
 use super::destination::Destination;
+use super::cartridge_type::CartridgeType;
 
 pub struct Cartridge {
     pub game_data: Vec<u8>,
@@ -9,7 +10,7 @@ pub struct Cartridge {
     pub cgb_flag: u8,
     pub licensee_code: String,
     pub sgb_flag: u8,
-    pub cartridge_type: u8,
+    pub cartridge_type: CartridgeType,
     pub rom_size: u8,
     pub ram_size: u8,
     pub destination_code: Destination,
@@ -35,7 +36,7 @@ impl Cartridge {
 
         let sgb_flag = value[326];
 
-        let cartridge_type = value[327];
+        let cartridge_type = CartridgeType::from(value[327]);
 
         let rom_size = value[328];
 
@@ -79,7 +80,7 @@ impl fmt::Display for Cartridge {
         writeln!(format, "Licensee Code:       {}", self.licensee_code)?;
         writeln!(format, "CGB Flag:            {:#04X}", self.cgb_flag)?;
         writeln!(format, "SGB Flag:            {:#04X}", self.sgb_flag)?;
-        writeln!(format, "Cartridge Type:      {:#04X}", self.cartridge_type)?;
+        writeln!(format, "Cartridge Type:      {}", self.cartridge_type)?;
         writeln!(format, "ROM Size:            {:#04X}", self.rom_size)?;
         writeln!(format, "RAM Size:            {:#04X}", self.ram_size)?;
         writeln!(format, "Destination Code:    {}", self.destination_code)?;
