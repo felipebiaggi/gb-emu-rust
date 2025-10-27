@@ -1,4 +1,4 @@
-use std::{fmt, u8};
+use std::{fmt, u16, u8};
 
 use super::destination::Destination;
 use super::cartridge_type::CartridgeType;
@@ -21,6 +21,11 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
+    
+    pub fn read(&self, addr: u16) -> u8 {
+        return self.game_data[addr as usize];
+    }
+
     pub fn load(value: Vec<u8>) -> Self {
         let game_title = String::from_utf8_lossy(&value[308..324]).to_string();
     
