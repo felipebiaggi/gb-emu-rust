@@ -1,7 +1,11 @@
-use std::{u8, u16};
+use std::{time::{Duration, Instant}, u16, u8};
 use bitflags::bitflags;
 
 use crate::bus::MemoryBus;
+
+const FPS: f64 = 60.7275;
+const FRAME_TIME: Duration = Duration::from_nanos((1_000_000_000f64 / FPS) as u64);
+const CYCLES_PER_FRAME: u64 = (4_194_304 as f64 / FPS) as u64;
 
 bitflags! {
     pub struct Flags: u8 {
@@ -83,4 +87,58 @@ impl Cpu {
             memory_bus: bus
         }
     }
+
+    pub fn start(&mut self) {
+        self.clock();
+    }
+
+    fn increment_program_counter(&mut self){
+        self.program_counter+=1;
+    }
+
+    fn update_cycles(&mut self, cycles: u8){
+        self.cycles = cycles;
+    }
+
+    fn clock(&mut self){
+        let mut next = Instant::now();
+
+        loop {
+            self.cpu_step(300);
+
+            next += FRAME_TIME;
+            let now = Instant::now();
+            
+            if next > now {
+                let remain = next - now;
+                println!("Sleep: {}", remain.as_secs());
+                std::thread::sleep(remain);
+            }
+
+            println!("End program");
+            break;
+        }
+    }
+
+    fn cpu_step(&mut self, steps: u64){
+        for _ in 0..steps{
+            let instruction = self.memory_bus.read(self.program_counter);
+            println!("Instruction: 0x{:02}", instruction);
+            self.process(instruction);
+        }
+    }
+
+    fn process(&mut self, inst: u8){
+        match inst {
+            0x00 => self.NOP(),
+            _ => todo!("Instrução ainda não implementada: 0x{:02X}", inst),
+        }
+    }
+
+    fn NOP(&mut self){
+        println!("INSTRUCTION NOP");
+        self.increment_program_counter();
+        self.update_cycles(1);
+    }
+
 }

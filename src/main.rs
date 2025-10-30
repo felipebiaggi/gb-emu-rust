@@ -6,10 +6,10 @@ mod cartridge;
 mod cpu;
 mod bus;
 
-use crate::bus::MemoryBus;
+use crate::bus::memory_bus;
 use crate::cartridge::Cartridge;
 use crate::cpu::Cpu;
-
+use crate::bus::MemoryBus;
 
 
 fn main() {
@@ -24,12 +24,12 @@ fn main() {
     };
 
     let cartridge = Cartridge::load(rom);
-
-    let memory_bus = MemoryBus::new(cartridge);
-
-    let mut cpu = Cpu::new(memory_bus);
     
-    println!("{}", cpu.memory_bus.cartridge);
+    let bus = MemoryBus::new(cartridge);
 
-    println!("0x{:02X}", cpu.memory_bus.read(1800));
+    let mut cpu = Cpu::new(bus);
+
+    // println!("{}", cpu.memory_bus.cartridge);
+
+    cpu.start();
 }
