@@ -123,7 +123,7 @@ impl Cpu {
     fn cpu_step(&mut self, steps: u64){
         for _ in 0..steps{
             let instruction = self.memory_bus.read(self.program_counter);
-            println!("Instruction: 0x{:02}", instruction);
+            println!("Instruction: 0x{:02X} - Address: 0x{:04X}", instruction, self.program_counter);
             self.process(instruction);
         }
     }
@@ -131,14 +131,46 @@ impl Cpu {
     fn process(&mut self, inst: u8){
         match inst {
             0x00 => self.NOP(),
+            0x01 => self.LD_BC_u16(),
+            0x10 => self.STOP(),
+            0xFF => self.RST(),
             _ => todo!("Instrução ainda não implementada: 0x{:02X}", inst),
         }
     }
 
-    fn NOP(&mut self){
+    fn NOP(&mut self) {
         println!("INSTRUCTION NOP");
         self.increment_program_counter();
-        self.update_cycles(1);
+        self.update_cycles(4);
+    }
+
+    fn LD_BC_u16(&mut self) {
+        self.increment_program_counter();
+        self.register_c = self.ld(self.program_counter);
+
+        self.increment_program_counter();
+        self.register_b = self.ld(self.program_counter);
+
+        self.update_cycles(3);
+    } 
+
+    fn STOP(&mut self) {
+        println!("INSTRUCTION STOP");
+        self.increment_program_counter();
+        self.increment_program_counter();
+        self.update_cycles(4);
+    }
+
+    fn RST(&mut self) {
+       self.increment_program_counter(); 
+    }
+
+    fn ld(&mut self, addr: u16) -> u8 {
+        return self.memory_bus.read(addr);
+    }
+
+    fn push(&mut self, &mut pc: u16) {
+
     }
 
 }
