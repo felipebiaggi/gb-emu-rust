@@ -29,7 +29,7 @@ fn main() {
 
     let mut cpu = Cpu::new(bus);
 
-    // println!("{}", cpu.memory_bus.cartridge);
+    println!("{}", cpu.memory_bus.cartridge);
 
     cpu.start();
 }

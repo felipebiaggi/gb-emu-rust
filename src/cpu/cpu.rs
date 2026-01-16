@@ -1,4 +1,4 @@
-use std::{time::{Duration, Instant}, u16, u8};
+use std::time::{Duration, Instant};
 use bitflags::bitflags;
 
 use crate::bus::MemoryBus;
@@ -79,7 +79,7 @@ impl Cpu {
         self.program_counter = 0x0100;
         self.stack_pointer = 0xFFFE;
 
-        if(self.memory_bus.cartridge.header_checksum == 0x00){
+        if self.memory_bus.cartridge.header_checksum == 0x00 {
             self.register_f = Flags::Z;
         } else {
             self.register_f = Flags::Z | Flags::H | Flags::C;
@@ -131,8 +131,10 @@ impl Cpu {
         match inst {
             0x00 => self.NOP(),
             0x01 => self.LD_BC_u16(),
-            0xC3 => self.INC_A(),
+            0x02 => self.LD_BC_A(),
+            0x03 => self.INC_BC(),
             0x10 => self.STOP(),
+            0x3C => self.INC_A(),
             0xFF => self.RST(),
             _ => todo!("Instrução ainda não implementada: 0x{:02X}", inst),
         }
@@ -146,13 +148,35 @@ impl Cpu {
 
     fn LD_BC_u16(&mut self) {
         self.increment_program_counter();
-        self.register_c = self.ld(self.program_counter);
+        self.register_c = self.memory_bus.read(self.program_counter);
 
         self.increment_program_counter();
-        self.register_b = self.ld(self.program_counter);
+        self.register_b = self.memory_bus.read(self.program_counter);
 
-        self.update_cycles(3);
+        self.increment_program_counter();
+        self.update_cycles(12);
     } 
+
+    fn LD_BC_A(&mut self) {
+        self.increment_program_counter();
+
+        let addr: u16 = ((self.register_b as u16) << 8) | (self.register_c as u16);
+        self.memory_bus.write(addr, self.register_a);
+
+        self.update_cycles(8);
+    }
+
+    fn INC_BC(&mut self){
+        self.increment_program_counter();
+
+        let bc: u16 = ((self.register_b as u16) << 8) | (self.register_c as u16);
+        let inc_bc = bc.wrapping_add(1);
+
+        self.register_b = (inc_bc >> 8) as u8;
+        self.register_c = (inc_bc & 0x00FF) as u8;
+    
+        self.update_cycles(8);
+    }
 
     fn STOP(&mut self) {
         println!("INSTRUCTION STOP");
@@ -163,48 +187,53 @@ impl Cpu {
 
     fn INC_A(&mut self) {
         self.increment_program_counter();
+      
+        self.register_a = self.inc(self.register_a);
+
+        self.update_cycles(4);
+
+    }
+
+
+    fn RST(&mut self) {
+       self.increment_program_counter();
+        let pc = self.program_counter;
+        self.push(pc);
+        self.program_counter = 0x0038;
+        self.update_cycles(16);
+    }
+
+
+    fn inc(&mut self, register: u8) -> u8 {
         
-        self.register_f.remove(Flags::H);
+        self.register_f.remove(Flags::N);
 
-        let a: u8 = self.register_a;
-        let result = a.wrapping_add(1);
+        let old_register: u8 = register;
+        let result = old_register.wrapping_add(1);
 
-        if(result == 0x00) {
+        if result == 0x00 {
             self.register_f.insert(Flags::Z);
         } else {
             self.register_f.remove(Flags::Z);
         }
 
-        if((result & 0x0F) == 0x00){
+        if (old_register & 0x0F) == 0x0F {
             self.register_f.insert(Flags::H);
         } else {
             self.register_f.remove(Flags::H);
         }
-
-        self.update_cycles(4);
-
-        self.register_a = a;
+    
+        return result;
     }
-
-    fn RST(&mut self) {
-       self.increment_program_counter(); 
-    }
-
-    fn ld(&mut self, addr: u16) -> u8 {
-        return self.memory_bus.read(addr);
-    }
-
 
     fn push(&mut self, pc: u16) {
-        let upper: u8 = (pc >> 8 & 0xffff) as u8;
-        let lower: u8 = (pc & 0xffff) as u8;
+        let upper: u8 = (pc >> 8 & 0xFFFF) as u8;
+        let lower: u8 = (pc & 0xFFFF) as u8;
 
         self.stack_pointer -= 1;
         self.memory_bus.write(self.stack_pointer, upper);
-        
 
         self.stack_pointer -= 1;
         self.memory_bus.write(self.stack_pointer, lower);
     }
-
 }
