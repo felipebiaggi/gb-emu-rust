@@ -151,6 +151,7 @@ impl Cpu {
             0x01 => self.ld_bc_u16(),
             0x02 => self.ld_bc_a(),
             0x03 => self.inc_bc(),
+            0x04 => self.inc_b(),
             0x05 => self.dec_b(),
             0x06 => self.ld_b_u8(),
             0x07 => self.rlca(),
