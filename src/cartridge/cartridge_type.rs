@@ -1,5 +1,5 @@
-use std::u8;
 use std::fmt;
+use std::u8;
 
 pub enum CartridgeType {
     RomOnly,
@@ -94,7 +94,9 @@ impl fmt::Display for CartridgeType {
             CartridgeType::Mbc5RumbleRam => write!(f, "MBC5 + Rumble + RAM"),
             CartridgeType::Mbc5RumbleRamBattery => write!(f, "MBC5 + Rumble + RAM + Battery"),
             CartridgeType::Mbc6 => write!(f, "MBC6"),
-            CartridgeType::Mbc7SensorRumbleRamBattery => write!(f, "MBC7 + Sensor + Rumble + RAM + Battery"),
+            CartridgeType::Mbc7SensorRumbleRamBattery => {
+                write!(f, "MBC7 + Sensor + Rumble + RAM + Battery")
+            }
             CartridgeType::PocketCamera => write!(f, "Pocket Camera"),
             CartridgeType::BandaiTama5 => write!(f, "Bandai TAMA5"),
             CartridgeType::Huc3 => write!(f, "HuC3"),
@@ -102,5 +104,3 @@ impl fmt::Display for CartridgeType {
         }
     }
 }
-
-

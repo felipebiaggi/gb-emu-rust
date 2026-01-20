@@ -1,7 +1,7 @@
-use std::{fmt, u16, u8};
+use std::{fmt, u8, u16};
 
-use super::destination::Destination;
 use super::cartridge_type::CartridgeType;
+use super::destination::Destination;
 
 pub struct Cartridge {
     pub game_data: Vec<u8>,
@@ -21,23 +21,18 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
-    
     pub fn read(&self, addr: u16) -> u8 {
         return self.game_data[addr as usize];
     }
 
     pub fn load(value: Vec<u8>) -> Self {
         let game_title = String::from_utf8_lossy(&value[308..324]).to_string();
-    
+
         let manufacturer_code = String::from_utf8_lossy(&value[319..323]).to_string();
 
         let cgb_flag = value[323];
 
-        let licensee_code = format!(
-            "{}{}",
-            value[324] as char,
-            value[325] as char
-        );
+        let licensee_code = format!("{}{}", value[324] as char, value[325] as char);
 
         let sgb_flag = value[326];
 
@@ -57,7 +52,6 @@ impl Cartridge {
 
         let global_checksum = u16::from_be_bytes([value[334], value[335]]);
 
-        
         Self {
             game_data: value,
             game_title,
@@ -89,11 +83,23 @@ impl fmt::Display for Cartridge {
         writeln!(format, "ROM Size:            {:#04X}", self.rom_size)?;
         writeln!(format, "RAM Size:            {:#04X}", self.ram_size)?;
         writeln!(format, "Destination Code:    {}", self.destination_code)?;
-        writeln!(format, "Old Licensee Code:   {:#04X}", self.old_licensee_code)?;
-        writeln!(format, "Mask ROM Version:    {:#04X}", self.mask_rom_version_number)?;
+        writeln!(
+            format,
+            "Old Licensee Code:   {:#04X}",
+            self.old_licensee_code
+        )?;
+        writeln!(
+            format,
+            "Mask ROM Version:    {:#04X}",
+            self.mask_rom_version_number
+        )?;
         writeln!(format, "Header Checksum:     {:#04X}", self.header_checksum)?;
         writeln!(format, "Global Checksum:     {:#06X}", self.global_checksum)?;
-        writeln!(format, "Game Data Size:      {} bytes", self.game_data.len())?;
+        writeln!(
+            format,
+            "Game Data Size:      {} bytes",
+            self.game_data.len()
+        )?;
         Ok(())
-    } 
+    }
 }

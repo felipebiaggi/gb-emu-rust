@@ -2,15 +2,14 @@ use std::env;
 use std::fs;
 use std::u8;
 
+mod bus;
 mod cartridge;
 mod cpu;
-mod bus;
 
+use crate::bus::MemoryBus;
 use crate::bus::memory_bus;
 use crate::cartridge::Cartridge;
 use crate::cpu::Cpu;
-use crate::bus::MemoryBus;
-
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -24,7 +23,7 @@ fn main() {
     };
 
     let cartridge = Cartridge::load(rom);
-    
+
     let bus = MemoryBus::new(cartridge);
 
     let mut cpu = Cpu::new(bus);

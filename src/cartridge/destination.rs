@@ -13,7 +13,7 @@ impl From<u8> for Destination {
             0x01 => Destination::Overseas,
             other => Destination::Unknown(other),
         }
-    }    
+    }
 }
 
 impl fmt::Display for Destination {
