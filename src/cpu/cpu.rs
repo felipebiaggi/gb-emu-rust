@@ -763,6 +763,7 @@ impl Cpu {
         self.update_cycles(4);
     }
 
+    // d16 imediato (little-endian): low = PC+1, high = PC+2
     fn ld_bc_u16(&mut self) {
         let low = self.read_u8(self.program_counter.wrapping_add(1));
         let high = self.read_u8(self.program_counter.wrapping_add(2));
@@ -875,7 +876,7 @@ impl Cpu {
     }
 
     fn dec_bc(&mut self) {
-        let bc = self.register_concat(self.register_b, self.register_c);
+        let bc = self.regqister_concat(self.register_b, self.register_c);
         let bc = bc.wrapping_sub(1);
 
         self.register_b = (bc >> 8) as u8;
@@ -885,10 +886,42 @@ impl Cpu {
         self.update_cycles(8);
     }
 
-    fn inc_c(&mut self) {}
-    fn dec_c(&mut self) {}
-    fn ld_c_u8(&mut self) {}
-    fn rrca(&mut self) {}
+    fn inc_c(&mut self) {
+        self.register_c = self.inc(self.register_c);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn dec_c(&mut self) {
+        self.register_c = self.dec(self.register_c);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn ld_c_u8(&mut self) {
+        self.register_c = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rrca(&mut self) {
+        let bit0 = (self.register_a & 0b0000_0001) != 0;
+        let result = self.register_a.rotate_right(1);
+
+        // RLCA: Z sempre 0, N=0, H=0, C=bit0
+        self.register_f.remove(FFlags::Z);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+        self.register_f.set(FFlags::C, bit0);
+
+        self.register_a = result;
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
 
     fn stop_inst(&mut self) {
         let next = self.read_u8(self.program_counter + 1);
@@ -905,9 +938,36 @@ impl Cpu {
         self.update_cycles(4);
     }
 
-    fn ld_de_u16(&mut self) {}
-    fn ld_de_a(&mut self) {}
-    fn inc_de(&mut self) {}
+    fn ld_de_u16(&mut self) {
+        let low = self.read_u8(self.program_counter.wrapping_add(1));
+        let high = self.read_u8(self.program_counter.wrapping_add(2));
+
+        self.register_d = low;
+        self.register_e = high;
+
+        self.advance_program_counter(3);
+        self.update_cycles(12);
+    }
+
+    fn ld_de_a(&mut self) {
+        let de = self.register_concat(self.register_d, self.register_e);
+        self.register_a = self.read_u8(de);
+
+        self.advance_program_counter(1);
+        self.update_cycles(12);
+    }
+
+    fn inc_de(&mut self) {
+        let de = self.regqister_concat(self.register_d, self.register_e);
+        let de = de.wrapping_add(1);
+
+        self.register_d = (de >> 8) as u8;
+        self.register_e = de as u8;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
     fn inc_d(&mut self) {}
     fn dec_d(&mut self) {}
     fn ld_d_u8(&mut self) {}
@@ -924,7 +984,18 @@ impl Cpu {
     fn jr_nz_i8(&mut self) {}
     fn ld_hl_u16(&mut self) {}
     fn ldi_hl_a(&mut self) {}
-    fn inc_hl(&mut self) {}
+
+    fn inc_hl(&mut self) {
+        let hl = self.regqister_concat(self.register_h, self.register_l);
+        let hl = hl.wrapping_add(1);
+
+        self.register_b = (hl >> 8) as u8;
+        self.register_c = hl as u8;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
     fn inc_h(&mut self) {}
     fn dec_h(&mut self) {}
     fn ld_h_u8(&mut self) {}
@@ -941,7 +1012,14 @@ impl Cpu {
     fn jr_nc_i8(&mut self) {}
     fn ld_sp_u16(&mut self) {}
     fn ldd_hl_a(&mut self) {}
-    fn inc_sp(&mut self) {}
+    
+    fn inc_sp(&mut self) {
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+    
     fn inc_hl_ptr(&mut self) {}
     fn dec_hl_ptr(&mut self) {}
     fn ld_hl_ptr_u8(&mut self) {}
@@ -958,7 +1036,13 @@ impl Cpu {
         self.update_cycles(4);
     }
 
-    fn dec_a(&mut self) {}
+    fn dec_a(&mut self) {
+        self.register_a = self.dec(self.register_a);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
     fn ld_a_u8(&mut self) {}
     fn ccf(&mut self) {}
 
