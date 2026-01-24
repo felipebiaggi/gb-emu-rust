@@ -876,7 +876,7 @@ impl Cpu {
     }
 
     fn dec_bc(&mut self) {
-        let bc = self.regqister_concat(self.register_b, self.register_c);
+        let bc = self.register_concat(self.register_b, self.register_c);
         let bc = bc.wrapping_sub(1);
 
         self.register_b = (bc >> 8) as u8;
@@ -958,7 +958,7 @@ impl Cpu {
     }
 
     fn inc_de(&mut self) {
-        let de = self.regqister_concat(self.register_d, self.register_e);
+        let de = self.register_concat(self.register_d, self.register_e);
         let de = de.wrapping_add(1);
 
         self.register_d = (de >> 8) as u8;
@@ -986,7 +986,7 @@ impl Cpu {
     fn ldi_hl_a(&mut self) {}
 
     fn inc_hl(&mut self) {
-        let hl = self.regqister_concat(self.register_h, self.register_l);
+        let hl = self.register_concat(self.register_h, self.register_l);
         let hl = hl.wrapping_add(1);
 
         self.register_b = (hl >> 8) as u8;
