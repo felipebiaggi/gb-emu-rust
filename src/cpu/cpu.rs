@@ -711,6 +711,34 @@ impl Cpu {
         ((high as u16) << 8) | (low as u16)
     }
 
+    fn rl_through_carry(&mut self, register: u8) -> u8 {
+        let old_carry = self.register_f.contains(FFlags::C);
+        let bit7 = (register & 0b1000_0000) != 0;
+
+        let carry_in_b0 = old_carry as u8;
+        let result = (register << 1) | carry_in_b0;
+
+        self.register_f
+            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
+        self.register_f.set(FFlags::C, bit7);
+
+        result
+    }
+
+    fn rr_through_carry(&mut self, register: u8) -> u8 {
+        let old_carry = self.register_f.contains(FFlags::C);
+        let bit0 = (register & 0b0000_0001) != 0;
+
+        let carry_in_b7: u8 = (old_carry as u8) << 7;
+        let result = (register >> 1) | carry_in_b7;
+
+        self.register_f
+            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
+        self.register_f.set(FFlags::C, bit0);
+
+        result
+    }
+
     fn inc(&mut self, register: u8) -> u8 {
         self.register_f.remove(FFlags::N);
 
@@ -968,18 +996,111 @@ impl Cpu {
         self.update_cycles(8);
     }
 
-    fn inc_d(&mut self) {}
-    fn dec_d(&mut self) {}
-    fn ld_d_u8(&mut self) {}
-    fn rla(&mut self) {}
-    fn jr_i8(&mut self) {}
-    fn add_hl_de(&mut self) {}
-    fn ld_a_de(&mut self) {}
-    fn dec_de(&mut self) {}
-    fn inc_e(&mut self) {}
-    fn dec_e(&mut self) {}
-    fn ld_e_u8(&mut self) {}
-    fn rra(&mut self) {}
+    fn inc_d(&mut self) {
+        self.register_d = self.inc(self.register_d);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn dec_d(&mut self) {
+        self.register_d = self.inc(self.register_d);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn ld_d_u8(&mut self) {
+        self.register_d = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rla(&mut self) {
+        self.register_a = self.rl_through_carry(self.register_a);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn jr_i8(&mut self) {
+        let offset_u8 = self.read_u8(self.program_counter.wrapping_add(1));
+        let offset = offset_u8 as i8 as i16;
+
+        self.advance_program_counter(2);
+        self.program_counter = self.program_counter.wrapping_add(offset as u16);
+
+        self.update_cycles(12);
+    }
+
+    fn add_hl_de(&mut self) {
+        let hl = self.register_concat(self.register_h, self.register_l);
+        let de = self.register_concat(self.register_d, self.register_e);
+
+        let result = hl.wrapping_add(de);
+
+        self.register_f.remove(FFlags::N);
+
+        let half_carry = ((hl & 0x0FFF) + (de & 0x0FFF)) > 0x0FFF;
+        self.register_f.set(FFlags::H, half_carry);
+
+        let carry = (hl as u32 + de as u32) > 0xFFFF;
+        self.register_f.set(FFlags::C, carry);
+
+        self.register_h = (result >> 8) as u8;
+        self.register_l = result as u8;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn ld_a_de(&mut self) {
+        let addr = self.register_concat(self.register_d, self.register_e);
+        self.register_a = self.read_u8(addr);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn dec_de(&mut self) {
+        let de = self.register_concat(self.register_d, self.register_e);
+        let de = de.wrapping_sub(1);
+
+        self.register_b = (de >> 8) as u8;
+        self.register_c = de as u8;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn inc_e(&mut self) {
+        self.register_e = self.inc(self.register_e);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn dec_e(&mut self) {
+        self.register_e = self.dec(self.register_e);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn ld_e_u8(&mut self) {
+        self.register_e = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rra(&mut self) {
+        self.register_a = self.rr_through_carry(self.register_a);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
 
     fn jr_nz_i8(&mut self) {}
     fn ld_hl_u16(&mut self) {}
@@ -1012,14 +1133,14 @@ impl Cpu {
     fn jr_nc_i8(&mut self) {}
     fn ld_sp_u16(&mut self) {}
     fn ldd_hl_a(&mut self) {}
-    
+
     fn inc_sp(&mut self) {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
 
         self.advance_program_counter(1);
         self.update_cycles(8);
     }
-    
+
     fn inc_hl_ptr(&mut self) {}
     fn dec_hl_ptr(&mut self) {}
     fn ld_hl_ptr_u8(&mut self) {}
