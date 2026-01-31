@@ -1102,9 +1102,43 @@ impl Cpu {
         self.update_cycles(4);
     }
 
-    fn jr_nz_i8(&mut self) {}
-    fn ld_hl_u16(&mut self) {}
-    fn ldi_hl_a(&mut self) {}
+    fn jr_nz_i8(&mut self) {
+        let offset_u8 = self.read_u8(self.program_counter.wrapping_add(1));
+        let offset = offset_u8 as i8 as i16;
+
+        let z_set = self.register_f.contains(FFlags::Z);
+
+        self.advance_program_counter(2);
+
+        if !z_set {
+            self.program_counter = self.program_counter.wrapping_add(offset as u16);
+            self.update_cycles(12);
+        } else {
+            self.update_cycles(8);
+        }
+    }
+
+    fn ld_hl_u16(&mut self) {
+        let low = self.read_u8(self.program_counter.wrapping_add(1));
+        let high = self.read_u8(self.program_counter.wrapping_add(2));
+
+        self.register_h = low;
+        self.register_l = high;
+
+        self.advance_program_counter(3);
+        self.update_cycles(12);
+    }
+
+    fn ldi_hl_a(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        self.memory_bus.write(addr, self.register_a);
+
+        let addr_plus = addr.wrapping_add(1);
+        self.register_h = ((addr_plus >> 8) & 0x00FF) as u8;
+        self.register_l = (addr_plus & 0x00FF) as u8;
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
 
     fn inc_hl(&mut self) {
         let hl = self.register_concat(self.register_h, self.register_l);
@@ -1117,12 +1151,93 @@ impl Cpu {
         self.update_cycles(8);
     }
 
-    fn inc_h(&mut self) {}
-    fn dec_h(&mut self) {}
-    fn ld_h_u8(&mut self) {}
-    fn daa(&mut self) {}
-    fn jr_z_i8(&mut self) {}
-    fn add_hl_hl(&mut self) {}
+    fn inc_h(&mut self) {
+        self.register_h = self.inc(self.register_h);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn dec_h(&mut self) {
+        self.register_h = self.dec(self.register_h);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn ld_h_u8(&mut self) {
+        self.register_h = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.advance_program_counter(8);
+        self.update_cycles(4);
+    }
+
+    fn daa(&mut self) {
+        let mut a = self.register_a;
+        let n = self.register_f.contains(FFlags::N);
+        let h = self.register_f.contains(FFlags::H);
+        let c = self.register_f.contains(FFlags::C);
+       
+       let mut carry_out = c; 
+
+        if !n {
+            if h || (a & 0x0F) > 0x09 {
+                a = a.wrapping_add(0x06);
+            }
+            if c || a > 0x99 {
+                a = a.wrapping_add(0x60);
+                carry_out = true;
+            }
+        } else {
+            if h {
+                a = a.wrapping_sub(0x06);
+            }
+            if c {
+                a = a.wrapping_sub(0x06);
+            }
+        }
+
+        self.register_a = a;
+
+        self.register_f.set(FFlags::Z, self.register_a == 0x00);
+        self.register_f.remove(FFlags::H);
+        self.register_f.set(FFlags::C, carry_out);
+    }
+
+    fn jr_z_i8(&mut self) {
+        let offset_u8 = self.read_u8(self.program_counter.wrapping_add(1));
+        let offset = offset_u8 as i8 as i16;
+
+        let z_set = self.register_f.contains(FFlags::Z);
+
+        self.advance_program_counter(2);
+
+        if z_set {
+            self.program_counter = self.program_counter.wrapping_add(offset as u16);
+            self.update_cycles(12);
+        } else {
+            self.update_cycles(8);
+        }
+    }
+
+    fn add_hl_hl(&mut self) {
+       let hl = self.register_concat(self.register_h, self.register_l);
+        
+        self.register_f.remove(FFlags::N);
+
+        let hafl_carry = ((hl & 0x0FFF)) + ((hl & 0x0FFF)) > 0x0FFF;
+        self.register_f.set(FFlags::H, hafl_carry);
+        
+        let (result, carry) = hl.overflowing_add(hl);
+        self.register_f.set(FFlags::C, carry);
+
+        self.register_h = ((result >> 8) & 0x00FF) as u8;
+        self.register_l = (result & 0x00FF) as u8; 
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
     fn ldi_a_hl(&mut self) {}
     fn dec_hl(&mut self) {}
     fn inc_l(&mut self) {}
@@ -1142,6 +1257,7 @@ impl Cpu {
     }
 
     fn inc_hl_ptr(&mut self) {}
+
     fn dec_hl_ptr(&mut self) {}
     fn ld_hl_ptr_u8(&mut self) {}
     fn scf(&mut self) {}
