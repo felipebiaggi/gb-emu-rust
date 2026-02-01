@@ -7,7 +7,6 @@ mod cartridge;
 mod cpu;
 
 use crate::bus::MemoryBus;
-use crate::bus::memory_bus;
 use crate::cartridge::Cartridge;
 use crate::cpu::Cpu;
 

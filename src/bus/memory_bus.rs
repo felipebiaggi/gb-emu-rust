@@ -13,7 +13,7 @@ impl MemoryBus {
         }
     }
 
-    pub fn write(&mut self, addr: u16, data: u8) {}
+    pub fn write(&mut self, _addr: u16, _data: u8) {}
 
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
