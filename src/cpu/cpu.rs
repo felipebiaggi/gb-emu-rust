@@ -707,6 +707,10 @@ impl Cpu {
         self.memory_bus.read(addr)
     }
 
+    fn write_u8(&mut self, addr: u16, data: u8) {
+        self.memory_bus.write(addr, data);
+    }
+
     fn register_concat(&self, high: u8, low: u8) -> u16 {
         ((high as u16) << 8) | (low as u16)
     }
@@ -886,8 +890,8 @@ impl Cpu {
     }
 
     fn ld_u16_sp(&mut self) {
-        let low = self.read_u8(self.program_counter + 1);
-        let high = self.read_u8(self.program_counter + 2);
+        let low = self.read_u8(self.program_counter.wrapping_add(1));
+        let high = self.read_u8(self.program_counter.wrapping_add(2));
         let addr = (low as u16) | ((high as u16) << 8);
 
         let sp_low = self.stack_pointer as u8;
@@ -944,14 +948,14 @@ impl Cpu {
         self.register_c = self.inc(self.register_c);
 
         self.advance_program_counter(1);
-        self.update_cycles(8);
+        self.update_cycles(4);
     }
 
     fn dec_c(&mut self) {
         self.register_c = self.dec(self.register_c);
 
         self.advance_program_counter(1);
-        self.update_cycles(8);
+        self.update_cycles(4);
     }
 
     fn ld_c_u8(&mut self) {
@@ -978,7 +982,7 @@ impl Cpu {
     }
 
     fn stop_inst(&mut self) {
-        let next = self.read_u8(self.program_counter + 1);
+        let next = self.read_u8(self.program_counter.wrapping_add(1));
         if next != 0x00 {
             panic!(
                 "stop (0x10) inválido: esperado 0x00 após o opcode, mas veio 0x{:02x} em pc=0x{:04x}",
@@ -996,8 +1000,8 @@ impl Cpu {
         let low = self.read_u8(self.program_counter.wrapping_add(1));
         let high = self.read_u8(self.program_counter.wrapping_add(2));
 
-        self.register_d = low;
-        self.register_e = high;
+        self.register_e = low;
+        self.register_d = high;
 
         self.advance_program_counter(3);
         self.update_cycles(12);
@@ -1005,10 +1009,10 @@ impl Cpu {
 
     fn ld_de_a(&mut self) {
         let de = self.register_concat(self.register_d, self.register_e);
-        self.register_a = self.read_u8(de);
+        self.write_u8(de, self.register_a);
 
         self.advance_program_counter(1);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn inc_de(&mut self) {
@@ -1030,7 +1034,7 @@ impl Cpu {
     }
 
     fn dec_d(&mut self) {
-        self.register_d = self.inc(self.register_d);
+        self.register_d = self.dec(self.register_d);
 
         self.advance_program_counter(1);
         self.update_cycles(4);
@@ -1093,8 +1097,8 @@ impl Cpu {
         let de = self.register_concat(self.register_d, self.register_e);
         let de = de.wrapping_sub(1);
 
-        self.register_b = (de >> 8) as u8;
-        self.register_c = de as u8;
+        self.register_d = (de >> 8) as u8;
+        self.register_e = de as u8;
 
         self.advance_program_counter(1);
         self.update_cycles(8);
@@ -1104,14 +1108,14 @@ impl Cpu {
         self.register_e = self.inc(self.register_e);
 
         self.advance_program_counter(1);
-        self.update_cycles(8);
+        self.update_cycles(4);
     }
 
     fn dec_e(&mut self) {
         self.register_e = self.dec(self.register_e);
 
         self.advance_program_counter(1);
-        self.update_cycles(8);
+        self.update_cycles(4);
     }
 
     fn ld_e_u8(&mut self) {
@@ -1131,15 +1135,15 @@ impl Cpu {
     fn jr_nz_i8(&mut self) {
         let z_set = self.register_f.contains(FFlags::Z);
 
-        self.jr_cond_i8(z_set);
+        self.jr_cond_i8(!z_set);
     }
 
     fn ld_hl_u16(&mut self) {
         let low = self.read_u8(self.program_counter.wrapping_add(1));
         let high = self.read_u8(self.program_counter.wrapping_add(2));
 
-        self.register_h = low;
-        self.register_l = high;
+        self.register_h = high;
+        self.register_l = low;
 
         self.advance_program_counter(3);
         self.update_cycles(12);
@@ -1158,10 +1162,10 @@ impl Cpu {
 
     fn inc_hl(&mut self) {
         let hl = self.register_concat(self.register_h, self.register_l);
-        let hl = hl.wrapping_add(1);
+        let hl_plus = hl.wrapping_add(1);
 
-        self.register_b = (hl >> 8) as u8;
-        self.register_c = hl as u8;
+        self.register_h = (hl_plus >> 8) as u8;
+        self.register_l = hl_plus as u8;
 
         self.advance_program_counter(1);
         self.update_cycles(8);
@@ -1184,8 +1188,8 @@ impl Cpu {
     fn ld_h_u8(&mut self) {
         self.register_h = self.read_u8(self.program_counter.wrapping_add(1));
 
-        self.advance_program_counter(8);
-        self.update_cycles(4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
     }
 
     fn daa(&mut self) {
@@ -1209,7 +1213,7 @@ impl Cpu {
                 a = a.wrapping_sub(0x06);
             }
             if c {
-                a = a.wrapping_sub(0x06);
+                a = a.wrapping_sub(0x60);
             }
         }
 
@@ -1292,11 +1296,42 @@ impl Cpu {
         self.update_cycles(8);
     }
 
-    fn cpl(&mut self) {}
+    fn cpl(&mut self) {
+        self.register_a = !self.register_a;
 
-    fn jr_nc_i8(&mut self) {}
-    fn ld_sp_u16(&mut self) {}
-    fn ldd_hl_a(&mut self) {}
+        self.register_f.insert(FFlags::N);
+        self.register_f.insert(FFlags::H);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn jr_nc_i8(&mut self) {
+        let c_flag = self.register_f.contains(FFlags::C);
+
+        self.jr_cond_i8(!c_flag);
+    }
+
+    fn ld_sp_u16(&mut self) {
+        let low = self.read_u8(self.program_counter.wrapping_add(1));
+        let high = self.read_u8(self.program_counter.wrapping_add(2));
+
+        self.stack_pointer = ((high as u16) << 8) | (low as u16);
+
+        self.advance_program_counter(3);
+        self.update_cycles(12);
+    }
+
+    fn ldd_hl_a(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        self.memory_bus.write(addr, self.register_a);
+
+        let addr_sub = addr.wrapping_sub(1);
+        self.register_h = ((addr_sub >> 8) & 0x00FF) as u8;
+        self.register_l = (addr_sub & 0x00FF) as u8;
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
 
     fn inc_sp(&mut self) {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
@@ -1305,15 +1340,101 @@ impl Cpu {
         self.update_cycles(8);
     }
 
-    fn inc_hl_ptr(&mut self) {}
+    fn inc_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
 
-    fn dec_hl_ptr(&mut self) {}
-    fn ld_hl_ptr_u8(&mut self) {}
-    fn scf(&mut self) {}
-    fn jr_c_i8(&mut self) {}
-    fn add_hl_sp(&mut self) {}
-    fn ldd_a_hl(&mut self) {}
-    fn dec_sp(&mut self) {}
+        let old_value = self.read_u8(addr);
+        let result = old_value.wrapping_add(1);
+
+        self.write_u8(addr, result);
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.remove(FFlags::N);
+        self.register_f.set(FFlags::H, (old_value & 0x0F) == 0x0F);
+
+        self.advance_program_counter(1);
+        self.update_cycles(12);
+    }
+
+    fn dec_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+
+        let old_value = self.read_u8(addr);
+        let result = old_value.wrapping_sub(1);
+
+        self.write_u8(addr, result);
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.insert(FFlags::N);
+        self.register_f.set(FFlags::H, (old_value & 0x0F) == 0x00);
+
+        self.advance_program_counter(1);
+        self.update_cycles(12);
+    }
+
+    fn ld_hl_ptr_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+        let addr = self.register_concat(self.register_h, self.register_l);
+
+        self.write_u8(addr, value);
+
+        self.advance_program_counter(2);
+        self.update_cycles(12);
+    }
+
+    fn scf(&mut self) {
+        self.register_f.insert(FFlags::C);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn jr_c_i8(&mut self) {
+        let c_flag = self.register_f.contains(FFlags::C);
+
+        self.jr_cond_i8(c_flag);
+    }
+
+    fn add_hl_sp(&mut self) {
+        let hl = self.register_concat(self.register_h, self.register_l);
+        let result = self.stack_pointer.wrapping_add(hl);
+
+        self.register_f.remove(FFlags::N);
+
+        let half_carry = ((hl & 0x0FFF) + (self.stack_pointer & 0x0FFF)) > 0x0FFF;
+        self.register_f.set(FFlags::H, half_carry);
+
+        let carry = (hl as u32 + self.stack_pointer as u32) > 0xFFFF;
+        self.register_f.set(FFlags::C, carry);
+
+        self.register_h = (result >> 8) as u8;
+        self.register_l = result as u8;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn ldd_a_hl(&mut self) {
+        let hl = self.register_concat(self.register_h, self.register_l);
+        self.register_a = self.read_u8(hl);
+
+        let hl_sub = hl.wrapping_sub(1);
+
+        self.register_h = (hl_sub >> 8) as u8;
+        self.register_l = hl_sub as u8;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn dec_sp(&mut self) {
+        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
 
     fn inc_a(&mut self) {
         self.register_a = self.inc(self.register_a);
@@ -1329,8 +1450,22 @@ impl Cpu {
         self.update_cycles(4);
     }
 
-    fn ld_a_u8(&mut self) {}
-    fn ccf(&mut self) {}
+    fn ld_a_u8(&mut self) {
+        self.register_a = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn ccf(&mut self) {
+        let carry = self.register_f.contains(FFlags::C);
+        self.register_f.set(FFlags::C, !carry);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
 
     fn ld_b_b(&mut self) {}
     fn ld_b_c(&mut self) {}
