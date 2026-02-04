@@ -791,13 +791,12 @@ impl Cpu {
         self.stack_pointer = self.stack_pointer.wrapping_sub(1);
         self.memory_bus.write(self.stack_pointer, lower);
     }
-    
+
     fn pop_u8(&mut self) -> u8 {
         let value = self.read_u8(self.stack_pointer);
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
         value
     }
-
 
     fn jr_cond_i8(&mut self, condition: bool) {
         /*
@@ -2553,7 +2552,9 @@ impl Cpu {
     fn jp_u16(&mut self) {
         let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
         let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
-        
+
+        // useless
+        self.advance_program_counter(3);
         self.program_counter = (high << 8) | lower;
 
         self.update_cycles(16);
@@ -2564,18 +2565,38 @@ impl Cpu {
 
         let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
         let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        let target = (high << 8) | lower;
 
         if !z_set {
+            let ret = self.program_counter.wrapping_add(3);
+            self.push_u16(ret);
 
+            self.program_counter = target;
+            self.update_cycles(24);
         } else {
             self.advance_program_counter(3);
             self.update_cycles(12);
         }
-
     }
 
-    fn push_bc(&mut self) {}
-    fn add_a_u8(&mut self) {}
+    fn push_bc(&mut self) {
+        let bc = ((self.register_b as u16) << 8) | (self.register_c as u16);
+        self.push(bc);
+        
+        self.advance_program_counter(1);
+        self.update_cycles(16);
+    }
+
+    fn add_a_u8(&mut self) {
+        self.register_f.remove(FFlags::N);
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+        
+        self.register_a = self.add(self.register_a, value);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+    
     fn rst_00(&mut self) {}
     fn ret_z(&mut self) {}
     fn ret(&mut self) {}
