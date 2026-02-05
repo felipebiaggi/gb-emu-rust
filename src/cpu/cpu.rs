@@ -2553,8 +2553,6 @@ impl Cpu {
         let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
         let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
 
-        // useless
-        self.advance_program_counter(3);
         self.program_counter = (high << 8) | lower;
 
         self.update_cycles(16);
@@ -2581,8 +2579,8 @@ impl Cpu {
 
     fn push_bc(&mut self) {
         let bc = ((self.register_b as u16) << 8) | (self.register_c as u16);
-        self.push(bc);
-        
+        self.push_u16(bc);
+
         self.advance_program_counter(1);
         self.update_cycles(16);
     }
@@ -2590,17 +2588,56 @@ impl Cpu {
     fn add_a_u8(&mut self) {
         self.register_f.remove(FFlags::N);
         let value = self.read_u8(self.program_counter.wrapping_add(1));
-        
+
         self.register_a = self.add(self.register_a, value);
 
         self.advance_program_counter(2);
         self.update_cycles(8);
     }
-    
-    fn rst_00(&mut self) {}
-    fn ret_z(&mut self) {}
-    fn ret(&mut self) {}
-    fn jp_z_u16(&mut self) {}
+
+    fn rst_00(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+
+        self.program_counter = 0x0000;
+        self.update_cycles(16);
+    }
+
+    fn ret_z(&mut self) {
+        let z_set = self.register_f.contains(FFlags::Z);
+
+        if z_set {
+            let low = self.pop_u8() as u16;
+            let high = self.pop_u8() as u16;
+            self.program_counter = (high << 8) | low;
+            self.update_cycles(20);
+        } else {
+            self.advance_program_counter(1);
+            self.update_cycles(8);
+        }
+    }
+
+    fn ret(&mut self) {
+        let low = self.pop_u8() as u16;
+        let high = self.pop_u8() as u16;
+        self.program_counter = (high << 8) | low;
+        self.update_cycles(16);
+    }
+
+    fn jp_z_u16(&mut self) {
+        let z_set = self.register_f.contains(FFlags::Z);
+
+        let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+
+        if z_set {
+            self.program_counter = (high << 8) | lower;
+            self.update_cycles(16);
+        } else {
+            self.advance_program_counter(3);
+            self.update_cycles(12);
+        }
+    }
 
     fn cb_prefix(&mut self) {
         self.advance_program_counter(1);
@@ -2611,13 +2648,69 @@ impl Cpu {
         self.process_cb(inst);
     }
 
-    fn call_z_u16(&mut self) {}
+    fn call_z_u16(&mut self) {
+        let z_set = self.register_f.contains(FFlags::Z);
 
-    fn call_u16(&mut self) {}
-    fn adc_a_u8(&mut self) {}
-    fn rst_08(&mut self) {}
+        let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        let target = (high << 8) | lower;
 
-    fn ret_nc(&mut self) {}
+        if z_set {
+            let ret = self.program_counter.wrapping_add(3);
+            self.push_u16(ret);
+
+            self.program_counter = target;
+            self.update_cycles(24);
+        } else {
+            self.advance_program_counter(3);
+            self.update_cycles(12);
+        }
+    }
+
+    fn call_u16(&mut self) {
+        let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        
+        let target = (high << 8) | lower;
+        let ret = self.program_counter.wrapping_add(3);
+        
+        self.push_u16(ret);
+        self.program_counter = target;
+
+        self.update_cycles(24);
+    }
+
+    fn adc_a_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.register_a = self.adc(self.register_a, value);
+        
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rst_08(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+
+        self.program_counter = 0x0008;
+        self.update_cycles(16);
+    }
+
+    fn ret_nc(&mut self) {
+        let c_set = self.register_f.contains(FFlags::C);
+        let low = self.pop_u8();
+        let high = self.pop_u8();
+
+        if !c_set {
+            self.program_counter = (high << 8) | low;
+            self.update_cycles(20);
+        } else {
+            self.advance_program_counter(1);
+            self.update_cycles(8);
+        }
+    }
+
     fn pop_de(&mut self) {}
     fn jp_nc_u16(&mut self) {}
     fn op_d3_unused(&mut self) {}
