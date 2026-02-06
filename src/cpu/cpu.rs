@@ -18,6 +18,16 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct InterruptFlags: u8 {
+        const VBLANK  = 1 << 0;
+        const LCDSTAT = 1 << 1;
+        const TIMER   = 1 << 2;
+        const SERIAL  = 1 << 3;
+        const JOYPAD  = 1 << 4;
+    }
+}
+
 pub struct Cpu {
     // 8-bit regs
     pub register_a: u8,
@@ -37,6 +47,7 @@ pub struct Cpu {
     pub halt: bool,
     pub stop: bool,
     pub interruption: bool,
+    pub ime_pending: bool,
 
     pub opcode: u8,
     pub cycles: u8,
@@ -63,6 +74,7 @@ impl Cpu {
             halt: false,
             stop: false,
             interruption: false,
+            ime_pending: false,
 
             opcode: 0,
             cycles: 0,
@@ -139,6 +151,11 @@ impl Cpu {
         self.opcode = inst;
 
         self.process(inst);
+
+        if self.ime_pending {
+            self.interruption = true;
+            self.ime_pending = false;
+        }
 
         self.cycles
     }
@@ -2670,10 +2687,10 @@ impl Cpu {
     fn call_u16(&mut self) {
         let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
         let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
-        
+
         let target = (high << 8) | lower;
         let ret = self.program_counter.wrapping_add(3);
-        
+
         self.push_u16(ret);
         self.program_counter = target;
 
@@ -2684,7 +2701,7 @@ impl Cpu {
         let value = self.read_u8(self.program_counter.wrapping_add(1));
 
         self.register_a = self.adc(self.register_a, value);
-        
+
         self.advance_program_counter(2);
         self.update_cycles(8);
     }
@@ -2699,10 +2716,10 @@ impl Cpu {
 
     fn ret_nc(&mut self) {
         let c_set = self.register_f.contains(FFlags::C);
-        let low = self.pop_u8();
-        let high = self.pop_u8();
 
         if !c_set {
+            let low = self.pop_u8() as u16;
+            let high = self.pop_u8() as u16;
             self.program_counter = (high << 8) | low;
             self.update_cycles(20);
         } else {
@@ -2711,54 +2728,412 @@ impl Cpu {
         }
     }
 
-    fn pop_de(&mut self) {}
-    fn jp_nc_u16(&mut self) {}
-    fn op_d3_unused(&mut self) {}
-    fn call_nc_u16(&mut self) {}
-    fn push_de(&mut self) {}
-    fn sub_u8(&mut self) {}
-    fn rst_10(&mut self) {}
-    fn ret_c(&mut self) {}
-    fn reti(&mut self) {}
-    fn jp_c_u16(&mut self) {}
-    fn op_db_unused(&mut self) {}
-    fn call_c_u16(&mut self) {}
-    fn op_dd_unused(&mut self) {}
-    fn sbc_a_u8(&mut self) {}
-    fn rst_18(&mut self) {}
+    fn pop_de(&mut self) {
+        self.register_e = self.pop_u8();
+        self.register_d = self.pop_u8();
 
-    fn ldh_u8_a(&mut self) {}
-    fn pop_hl(&mut self) {}
-    fn ldh_c_a(&mut self) {}
-    fn op_e3_unused(&mut self) {}
-    fn op_e4_unused(&mut self) {}
-    fn push_hl(&mut self) {}
-    fn and_u8(&mut self) {}
-    fn rst_20(&mut self) {}
-    fn add_sp_i8(&mut self) {}
-    fn jp_hl(&mut self) {}
-    fn ld_u16_a(&mut self) {}
-    fn op_eb_unused(&mut self) {}
-    fn op_ec_unused(&mut self) {}
-    fn op_ed_unused(&mut self) {}
-    fn xor_u8(&mut self) {}
-    fn rst_28(&mut self) {}
+        self.advance_program_counter(1);
+        self.update_cycles(12);
+    }
 
-    fn ldh_a_u8(&mut self) {}
-    fn pop_af(&mut self) {}
-    fn ldh_a_c(&mut self) {}
-    fn di(&mut self) {}
-    fn op_f4_unused(&mut self) {}
-    fn push_af(&mut self) {}
-    fn or_u8(&mut self) {}
-    fn rst_30(&mut self) {}
-    fn ld_hl_sp_i8(&mut self) {}
-    fn ld_sp_hl(&mut self) {}
-    fn ld_a_u16(&mut self) {}
-    fn ei(&mut self) {}
-    fn op_fc_unused(&mut self) {}
-    fn op_fd_unused(&mut self) {}
-    fn cp_u8(&mut self) {}
+    fn jp_nc_u16(&mut self) {
+        let c_set = self.register_f.contains(FFlags::C);
+
+        let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+
+        if !c_set {
+            self.program_counter = (high << 8) | lower;
+            self.update_cycles(16);
+        } else {
+            self.advance_program_counter(3);
+            self.update_cycles(12);
+        }
+    }
+
+    fn op_d3_unused(&mut self) {
+        panic!("Unused OPCODE 0xD3");
+    }
+
+    fn call_nc_u16(&mut self) {
+        let c_set = self.register_f.contains(FFlags::C);
+
+        let low = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        let target = (high << 8) | low;
+
+        if !c_set {
+            let ret = self.program_counter.wrapping_add(3);
+            self.push_u16(ret);
+
+            self.program_counter = target;
+            self.update_cycles(24);
+        } else {
+            self.advance_program_counter(3);
+            self.update_cycles(12);
+        }
+    }
+
+    fn push_de(&mut self) {
+        let de = ((self.register_d as u16) << 8) | (self.register_e as u16);
+        self.push_u16(de);
+
+        self.advance_program_counter(1);
+        self.update_cycles(16);
+    }
+
+    fn sub_u8(&mut self) {
+        let valor = self.read_u8(self.program_counter.wrapping_add(1));
+        self.register_a = self.sub(self.register_a, valor);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rst_10(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+
+        self.program_counter = 0x0010;
+        self.update_cycles(16);
+    }
+
+    fn ret_c(&mut self) {
+        let c_set = self.register_f.contains(FFlags::C);
+
+        if c_set {
+            let low = self.pop_u8() as u16;
+            let high = self.pop_u8() as u16;
+            self.program_counter = (high << 8) | low;
+            self.update_cycles(20);
+        } else {
+            self.advance_program_counter(1);
+            self.update_cycles(8);
+        }
+    }
+
+    fn reti(&mut self) {
+        let low = self.pop_u8() as u16;
+        let high = self.pop_u8() as u16;
+        self.program_counter = (high << 8) | low;
+        self.interruption = true;
+        self.ime_pending = false;
+
+        self.update_cycles(16);
+    }
+
+    fn jp_c_u16(&mut self) {
+        let c_set = self.register_f.contains(FFlags::C);
+
+        let lower = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+
+        if c_set {
+            self.program_counter = (high << 8) | lower;
+            self.update_cycles(16);
+        } else {
+            self.advance_program_counter(3);
+            self.update_cycles(12);
+        }
+    }
+
+    fn op_db_unused(&mut self) {
+        panic!("unused opcode 0xDB");
+    }
+
+    fn call_c_u16(&mut self) {
+        let c_set = self.register_f.contains(FFlags::C);
+
+        let low = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        let target = (high << 8) | low;
+
+        if c_set {
+            let ret = self.program_counter.wrapping_add(3);
+            self.push_u16(ret);
+
+            self.program_counter = target;
+            self.update_cycles(24);
+        } else {
+            self.advance_program_counter(3);
+            self.update_cycles(12);
+        }
+    }
+
+    fn op_dd_unused(&mut self) {
+        panic!("unused opcode 0xDD");
+    }
+
+    fn sbc_a_u8(&mut self) {
+        let valor = self.read_u8(self.program_counter.wrapping_add(1));
+        self.register_a = self.sbc(self.register_a, valor);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rst_18(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+
+        self.program_counter = 0x0018;
+        self.update_cycles(16);
+    }
+
+    fn ldh_u8_a(&mut self) {
+        let offset = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let addr = ((0xFF << 8) as u16) | offset;
+
+        self.write_u8(addr, self.register_a);
+
+        self.advance_program_counter(2);
+        self.update_cycles(12);
+    }
+
+    fn pop_hl(&mut self) {
+        self.register_l = self.pop_u8();
+        self.register_h = self.pop_u8();
+
+        self.advance_program_counter(1);
+        self.update_cycles(12);
+    }
+
+    fn ldh_c_a(&mut self) {
+        let addr = ((0xFF << 8) as u16) | (self.register_c as u16);
+
+        self.write_u8(addr, self.register_a);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn op_e3_unused(&mut self) {
+        panic!("unused opcode 0xE3");
+    }
+
+    fn op_e4_unused(&mut self) {
+        panic!("unused opcode 0xE4");
+    }
+
+    fn push_hl(&mut self) {
+        let hl = ((self.register_h as u16) << 8) | (self.register_l as u16);
+        self.push_u16(hl);
+
+        self.advance_program_counter(1);
+        self.update_cycles(16);
+    }
+
+    fn and_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+        self.register_a = self.and_(self.register_a, value);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rst_20(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+        self.program_counter = 0x0020;
+        self.update_cycles(16);
+    }
+
+    fn add_sp_i8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1)) as i8 as i16;
+
+        let sp = self.stack_pointer;
+        let result = sp.wrapping_add(value as u16);
+
+        self.register_f.remove(FFlags::Z);
+        self.register_f.remove(FFlags::N);
+
+        let low_sp = sp & 0x00FF;
+        let low_val = (value as u16) & 0x00FF;
+
+        self.register_f
+            .set(FFlags::H, ((low_sp & 0x000F) + (low_val & 0x000F)) > 0x000F);
+
+        self.register_f.set(FFlags::C, (low_sp + low_val) > 0x00FF);
+
+        self.stack_pointer = result;
+
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn jp_hl(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        self.program_counter = addr;
+        self.update_cycles(4);
+    }
+
+    fn ld_u16_a(&mut self) {
+        let low = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        let addr = (high << 8) | low;
+
+        self.write_u8(addr, self.register_a);
+
+        self.advance_program_counter(3);
+        self.update_cycles(16);
+    }
+
+    fn op_eb_unused(&mut self) {
+        panic!("unused opcode 0xEB");
+    }
+
+    fn op_ec_unused(&mut self) {
+        panic!("unused opcode 0xEC");
+    }
+
+    fn op_ed_unused(&mut self) {
+        panic!("unused opcode 0xED");
+    }
+
+    fn xor_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+        self.register_a = self.xor(self.register_a, value);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rst_28(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+        self.program_counter = 0x0028;
+        self.update_cycles(16);
+    }
+
+    fn ldh_a_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let addr = ((0xFF << 8) as u16) | value;
+
+        self.register_a = self.read_u8(addr);
+        self.advance_program_counter(2);
+        self.update_cycles(12);
+    }
+
+    fn pop_af(&mut self) {
+        let low = self.pop_u8();
+        let high = self.pop_u8();
+
+        self.register_a = high;
+        self.register_f = FFlags::from_bits_truncate(low & 0xF0);
+
+        self.advance_program_counter(1);
+        self.update_cycles(12);
+    }
+
+    fn ldh_a_c(&mut self) {
+        let addr = self.register_concat(0xFF, self.register_c);
+        self.register_a = self.read_u8(addr);
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn di(&mut self) {
+        self.interruption = false;
+        self.ime_pending = false;
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn op_f4_unused(&mut self) {
+        panic!("unused opcode 0xEB");
+    }
+
+    fn push_af(&mut self) {
+        let f = self.register_f.bits() & 0xF0;
+        let af = ((self.register_a as u16) << 8) | (f as u16);
+
+        self.push_u16(af);
+
+        self.advance_program_counter(1);
+        self.update_cycles(16);
+    }
+
+    fn or_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+        self.register_a = self.or_(self.register_a, value);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rst_30(&mut self) {
+        let ret = self.program_counter.wrapping_add(1);
+        self.push_u16(ret);
+        self.program_counter = 0x0030;
+        self.update_cycles(16);
+    }
+
+    fn ld_hl_sp_i8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1)) as i8 as i16;
+
+        let sp = self.stack_pointer;
+        let result = sp.wrapping_add(value as u16);
+
+        self.register_f.remove(FFlags::Z);
+        self.register_f.remove(FFlags::N);
+
+        let low_sp = sp & 0x00FF;
+        let low_val = (value as u16) & 0x00FF;
+
+        self.register_f
+            .set(FFlags::H, ((low_sp & 0x000F) + (low_val & 0x000F)) > 0x000F);
+        self.register_f.set(FFlags::C, (low_sp + low_val) > 0x00FF);
+
+        self.register_h = (result >> 8) as u8;
+        self.register_l = result as u8;
+
+        self.advance_program_counter(2);
+        self.update_cycles(12);
+    }
+
+    fn ld_sp_hl(&mut self) {
+        let hl = self.register_concat(self.register_h, self.register_l);
+        self.stack_pointer = hl;
+
+        self.advance_program_counter(1);
+        self.update_cycles(8);
+    }
+
+    fn ld_a_u16(&mut self) {
+        let low = self.read_u8(self.program_counter.wrapping_add(1)) as u16;
+        let high = self.read_u8(self.program_counter.wrapping_add(2)) as u16;
+        let addr = (high << 8) | low;
+
+        self.register_a = self.read_u8(addr);
+
+        self.advance_program_counter(3);
+        self.update_cycles(16);
+    }
+
+    fn ei(&mut self) {
+        self.ime_pending = true;
+
+        self.advance_program_counter(1);
+        self.update_cycles(4);
+    }
+
+    fn op_fc_unused(&mut self) {
+        panic!("unused opcode 0xFC");
+    }
+
+    fn op_fd_unused(&mut self) {
+        panic!("unused opcode 0xFD");
+    }
+
+    fn cp_u8(&mut self) {
+        let value = self.read_u8(self.program_counter.wrapping_add(1));
+
+        self.cp(self.register_a, value);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
     fn rst_38(&mut self) {
         let ret = self.program_counter.wrapping_add(1);
