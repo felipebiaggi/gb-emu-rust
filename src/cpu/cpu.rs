@@ -100,6 +100,11 @@ impl Cpu {
         } else {
             self.register_f = FFlags::Z | FFlags::H | FFlags::C;
         }
+
+        self.memory_bus.write(0xFF0F, 0xE1); // IF
+        self.memory_bus.write(0xFFFF, 0x00); // IE
+        self.interruption = false;
+        self.ime_pending = false;
     }
 
     pub fn start(&mut self) {
@@ -146,6 +151,8 @@ impl Cpu {
         if self.halt {
             return 4;
         }
+
+        self.cycles = 0;
 
         let inst = self.memory_bus.read(self.program_counter);
         self.opcode = inst;
@@ -2657,6 +2664,8 @@ impl Cpu {
     }
 
     fn cb_prefix(&mut self) {
+        println!("Enter CB Prefix");
+
         self.advance_program_counter(1);
 
         let inst = self.memory_bus.read(self.program_counter);

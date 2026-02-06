@@ -25,6 +25,10 @@ impl Cartridge {
         return self.game_data[addr as usize];
     }
 
+    pub fn write(&self, addr: u16, data: u8) {
+    
+    }
+
     pub fn load(value: Vec<u8>) -> Self {
         let game_title = String::from_utf8_lossy(&value[308..324]).to_string();
 
