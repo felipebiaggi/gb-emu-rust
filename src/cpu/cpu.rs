@@ -741,34 +741,6 @@ impl Cpu {
         ((high as u16) << 8) | (low as u16)
     }
 
-    fn rl_through_carry(&mut self, register: u8) -> u8 {
-        let old_carry = self.register_f.contains(FFlags::C);
-        let bit7 = (register & 0b1000_0000) != 0;
-
-        let carry_in_b0 = old_carry as u8;
-        let result = (register << 1) | carry_in_b0;
-
-        self.register_f
-            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
-        self.register_f.set(FFlags::C, bit7);
-
-        result
-    }
-
-    fn rr_through_carry(&mut self, register: u8) -> u8 {
-        let old_carry = self.register_f.contains(FFlags::C);
-        let bit0 = (register & 0b0000_0001) != 0;
-
-        let carry_in_b7: u8 = (old_carry as u8) << 7;
-        let result = (register >> 1) | carry_in_b7;
-
-        self.register_f
-            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
-        self.register_f.set(FFlags::C, bit0);
-
-        result
-    }
-
     fn inc(&mut self, register: u8) -> u8 {
         self.register_f.remove(FFlags::N);
 
@@ -803,6 +775,114 @@ impl Cpu {
         self.register_f.set(FFlags::C, bit7);
 
         result
+    }
+
+    fn rrc(&mut self, register: u8) -> u8 {
+        let bit0 = (register & 0b0000_0001) != 0;
+        let result = register.rotate_right(1);
+
+        self.register_f.set(FFlags::Z, result == 0x00);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+        self.register_f.set(FFlags::C, bit0);
+
+        result
+    }
+
+    fn rl(&mut self, value: u8) -> u8 {
+        let old_carry = self.register_f.contains(FFlags::C);
+
+        let new_carry = (value & 0b1000_0000) != 0;
+
+        let result = (value << 1) | (old_carry as u8);
+
+        self.register_f
+            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.set(FFlags::C, new_carry);
+
+        result
+    }
+
+    fn rr(&mut self, value: u8) -> u8 {
+        let old_carry = self.register_f.contains(FFlags::C);
+
+        let new_carry = (value & 0b0000_0001) != 0;
+
+        let result = (value >> 1) | ((old_carry as u8) << 7);
+
+        self.register_f
+            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.set(FFlags::C, new_carry);
+
+        result
+    }
+
+    fn sla(&mut self, value: u8) -> u8 {
+        let new_carry = (value & 0b1000_0000) != 0;
+        let result = value << 1;
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+        self.register_f.set(FFlags::C, new_carry);
+
+        result
+    }
+
+    fn sra(&mut self, value: u8) -> u8 {
+        let old_bit7 = value & 0b1000_0000;
+        let new_carry = (value & 0b0000_0001) != 0;
+
+        let result = (value >> 1) | old_bit7;
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+        self.register_f.set(FFlags::C, new_carry);
+
+        result
+    }
+
+    fn swap(&mut self, value: u8) -> u8 {
+        let result = (value >> 4) | (value << 4);
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+        self.register_f.remove(FFlags::C);
+
+        result
+    }
+
+    fn srl(&mut self, value: u8) -> u8 {
+        let new_carry = (value & 0b0000_0001) != 0;
+        let result = value >> 1;
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.remove(FFlags::N);
+        self.register_f.remove(FFlags::H);
+        self.register_f.set(FFlags::C, new_carry);
+
+        result
+    }
+
+    fn bit(&mut self, value: u8, bit: u8) {
+        let mask = 1u8 << bit;
+        let result = value & mask;
+
+        self.register_f.set(FFlags::Z, result == 0);
+        self.register_f.remove(FFlags::N);
+        self.register_f.insert(FFlags::H);
+    }
+
+    fn res(&mut self, value: u8, bit: u8) -> u8 {
+        value & !(1u8 << bit)
+    }
+
+    fn set(&mut self, value: u8, bit: u8) -> u8 {
+        value | (1u8 << bit)
     }
 
     fn push_u16(&mut self, value: u16) {
@@ -1198,7 +1278,17 @@ impl Cpu {
     }
 
     fn rla(&mut self) {
-        self.register_a = self.rl_through_carry(self.register_a);
+        let old_carry = self.register_f.contains(FFlags::C);
+
+        let new_carry = (self.register_a & 0x80) != 0;
+
+        let result = (self.register_a << 1) | (old_carry as u8);
+
+        self.register_a = result;
+
+        self.register_f
+            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
+        self.register_f.set(FFlags::C, new_carry);
 
         self.advance_program_counter(1);
         self.update_cycles(4);
@@ -1276,7 +1366,17 @@ impl Cpu {
     }
 
     fn rra(&mut self) {
-        self.register_a = self.rr_through_carry(self.register_a);
+        let old_carry = self.register_f.contains(FFlags::C);
+
+        let new_carry = (self.register_a & 0x01) != 0;
+
+        let result = (self.register_a >> 1) | ((old_carry as u8) << 7);
+
+        self.register_a = result;
+
+        self.register_f
+            .remove(FFlags::Z | FFlags::N | FFlags::H | FFlags::C);
+        self.register_f.set(FFlags::C, new_carry);
 
         self.advance_program_counter(1);
         self.update_cycles(4);
@@ -3050,7 +3150,7 @@ impl Cpu {
     }
 
     fn op_f4_unused(&mut self) {
-        panic!("unused opcode 0xEB");
+        panic!("unused opcode 0xF4");
     }
 
     fn push_af(&mut self) {
@@ -3152,291 +3252,1655 @@ impl Cpu {
         self.update_cycles(16);
     }
 
-    fn rlc_b(&mut self) {}
-    fn rlc_c(&mut self) {}
-    fn rlc_d(&mut self) {}
-    fn rlc_e(&mut self) {}
-    fn rlc_h(&mut self) {}
-    fn rlc_l(&mut self) {}
-    fn rlc_hl_ptr(&mut self) {}
-    fn rlc_a(&mut self) {}
+    fn rlc_b(&mut self) {
+        self.register_b = self.rlc(self.register_b);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn rrc_b(&mut self) {}
-    fn rrc_c(&mut self) {}
-    fn rrc_d(&mut self) {}
-    fn rrc_e(&mut self) {}
-    fn rrc_h(&mut self) {}
-    fn rrc_l(&mut self) {}
-    fn rrc_hl_ptr(&mut self) {}
-    fn rrc_a(&mut self) {}
+    fn rlc_c(&mut self) {
+        self.register_c = self.rlc(self.register_c);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn rl_b(&mut self) {}
-    fn rl_c(&mut self) {}
-    fn rl_d(&mut self) {}
-    fn rl_e(&mut self) {}
-    fn rl_h(&mut self) {}
-    fn rl_l(&mut self) {}
-    fn rl_hl_ptr(&mut self) {}
-    fn rl_a(&mut self) {}
+    fn rlc_d(&mut self) {
+        self.register_d = self.rlc(self.register_d);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn rr_b(&mut self) {}
-    fn rr_c(&mut self) {}
-    fn rr_d(&mut self) {}
-    fn rr_e(&mut self) {}
-    fn rr_h(&mut self) {}
-    fn rr_l(&mut self) {}
-    fn rr_hl_ptr(&mut self) {}
-    fn rr_a(&mut self) {}
+    fn rlc_e(&mut self) {
+        self.register_e = self.rlc(self.register_e);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn sla_b(&mut self) {}
-    fn sla_c(&mut self) {}
-    fn sla_d(&mut self) {}
-    fn sla_e(&mut self) {}
-    fn sla_h(&mut self) {}
-    fn sla_l(&mut self) {}
-    fn sla_hl_ptr(&mut self) {}
-    fn sla_a(&mut self) {}
+    fn rlc_h(&mut self) {
+        self.register_h = self.rlc(self.register_h);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn sra_b(&mut self) {}
-    fn sra_c(&mut self) {}
-    fn sra_d(&mut self) {}
-    fn sra_e(&mut self) {}
-    fn sra_h(&mut self) {}
-    fn sra_l(&mut self) {}
-    fn sra_hl_ptr(&mut self) {}
-    fn sra_a(&mut self) {}
+    fn rlc_l(&mut self) {
+        self.register_l = self.rlc(self.register_l);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn swap_b(&mut self) {}
-    fn swap_c(&mut self) {}
-    fn swap_d(&mut self) {}
-    fn swap_e(&mut self) {}
-    fn swap_h(&mut self) {}
-    fn swap_l(&mut self) {}
-    fn swap_hl_ptr(&mut self) {}
-    fn swap_a(&mut self) {}
+    fn rlc_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.rlc(value);
 
-    fn srl_b(&mut self) {}
-    fn srl_c(&mut self) {}
-    fn srl_d(&mut self) {}
-    fn srl_e(&mut self) {}
-    fn srl_h(&mut self) {}
-    fn srl_l(&mut self) {}
-    fn srl_hl_ptr(&mut self) {}
-    fn srl_a(&mut self) {}
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
 
-    fn bit_0_b(&mut self) {}
-    fn bit_0_c(&mut self) {}
-    fn bit_0_d(&mut self) {}
-    fn bit_0_e(&mut self) {}
-    fn bit_0_h(&mut self) {}
-    fn bit_0_l(&mut self) {}
-    fn bit_0_hl_ptr(&mut self) {}
-    fn bit_0_a(&mut self) {}
+    fn rlc_a(&mut self) {
+        self.register_a = self.rlc(self.register_a);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_1_b(&mut self) {}
-    fn bit_1_c(&mut self) {}
-    fn bit_1_d(&mut self) {}
-    fn bit_1_e(&mut self) {}
-    fn bit_1_h(&mut self) {}
-    fn bit_1_l(&mut self) {}
-    fn bit_1_hl_ptr(&mut self) {}
-    fn bit_1_a(&mut self) {}
+    fn rrc_b(&mut self) {
+        self.register_b = self.rrc(self.register_b);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_2_b(&mut self) {}
-    fn bit_2_c(&mut self) {}
-    fn bit_2_d(&mut self) {}
-    fn bit_2_e(&mut self) {}
-    fn bit_2_h(&mut self) {}
-    fn bit_2_l(&mut self) {}
-    fn bit_2_hl_ptr(&mut self) {}
-    fn bit_2_a(&mut self) {}
+    fn rrc_c(&mut self) {
+        self.register_c = self.rrc(self.register_c);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_3_b(&mut self) {}
-    fn bit_3_c(&mut self) {}
-    fn bit_3_d(&mut self) {}
-    fn bit_3_e(&mut self) {}
-    fn bit_3_h(&mut self) {}
-    fn bit_3_l(&mut self) {}
-    fn bit_3_hl_ptr(&mut self) {}
-    fn bit_3_a(&mut self) {}
+    fn rrc_d(&mut self) {
+        self.register_d = self.rrc(self.register_d);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_4_b(&mut self) {}
-    fn bit_4_c(&mut self) {}
-    fn bit_4_d(&mut self) {}
-    fn bit_4_e(&mut self) {}
-    fn bit_4_h(&mut self) {}
-    fn bit_4_l(&mut self) {}
-    fn bit_4_hl_ptr(&mut self) {}
-    fn bit_4_a(&mut self) {}
+    fn rrc_e(&mut self) {
+        self.register_e = self.rrc(self.register_e);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_5_b(&mut self) {}
-    fn bit_5_c(&mut self) {}
-    fn bit_5_d(&mut self) {}
-    fn bit_5_e(&mut self) {}
-    fn bit_5_h(&mut self) {}
-    fn bit_5_l(&mut self) {}
-    fn bit_5_hl_ptr(&mut self) {}
-    fn bit_5_a(&mut self) {}
+    fn rrc_h(&mut self) {
+        self.register_h = self.rrc(self.register_h);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_6_b(&mut self) {}
-    fn bit_6_c(&mut self) {}
-    fn bit_6_d(&mut self) {}
-    fn bit_6_e(&mut self) {}
-    fn bit_6_h(&mut self) {}
-    fn bit_6_l(&mut self) {}
-    fn bit_6_hl_ptr(&mut self) {}
-    fn bit_6_a(&mut self) {}
+    fn rrc_l(&mut self) {
+        self.register_l = self.rrc(self.register_l);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn bit_7_b(&mut self) {}
-    fn bit_7_c(&mut self) {}
-    fn bit_7_d(&mut self) {}
-    fn bit_7_e(&mut self) {}
-    fn bit_7_h(&mut self) {}
-    fn bit_7_l(&mut self) {}
-    fn bit_7_hl_ptr(&mut self) {}
-    fn bit_7_a(&mut self) {}
+    fn rrc_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.rrc(value);
 
-    fn res_0_b(&mut self) {}
-    fn res_0_c(&mut self) {}
-    fn res_0_d(&mut self) {}
-    fn res_0_e(&mut self) {}
-    fn res_0_h(&mut self) {}
-    fn res_0_l(&mut self) {}
-    fn res_0_hl_ptr(&mut self) {}
-    fn res_0_a(&mut self) {}
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
 
-    fn res_1_b(&mut self) {}
-    fn res_1_c(&mut self) {}
-    fn res_1_d(&mut self) {}
-    fn res_1_e(&mut self) {}
-    fn res_1_h(&mut self) {}
-    fn res_1_l(&mut self) {}
-    fn res_1_hl_ptr(&mut self) {}
-    fn res_1_a(&mut self) {}
+    fn rrc_a(&mut self) {
+        self.register_a = self.rrc(self.register_a);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn res_2_b(&mut self) {}
-    fn res_2_c(&mut self) {}
-    fn res_2_d(&mut self) {}
-    fn res_2_e(&mut self) {}
-    fn res_2_h(&mut self) {}
-    fn res_2_l(&mut self) {}
-    fn res_2_hl_ptr(&mut self) {}
-    fn res_2_a(&mut self) {}
+    fn rl_b(&mut self) {
+        self.register_b = self.rl(self.register_b);
 
-    fn res_3_b(&mut self) {}
-    fn res_3_c(&mut self) {}
-    fn res_3_d(&mut self) {}
-    fn res_3_e(&mut self) {}
-    fn res_3_h(&mut self) {}
-    fn res_3_l(&mut self) {}
-    fn res_3_hl_ptr(&mut self) {}
-    fn res_3_a(&mut self) {}
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn res_4_b(&mut self) {}
-    fn res_4_c(&mut self) {}
-    fn res_4_d(&mut self) {}
-    fn res_4_e(&mut self) {}
-    fn res_4_h(&mut self) {}
-    fn res_4_l(&mut self) {}
-    fn res_4_hl_ptr(&mut self) {}
-    fn res_4_a(&mut self) {}
+    fn rl_c(&mut self) {
+        self.register_c = self.rl(self.register_c);
 
-    fn res_5_b(&mut self) {}
-    fn res_5_c(&mut self) {}
-    fn res_5_d(&mut self) {}
-    fn res_5_e(&mut self) {}
-    fn res_5_h(&mut self) {}
-    fn res_5_l(&mut self) {}
-    fn res_5_hl_ptr(&mut self) {}
-    fn res_5_a(&mut self) {}
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn res_6_b(&mut self) {}
-    fn res_6_c(&mut self) {}
-    fn res_6_d(&mut self) {}
-    fn res_6_e(&mut self) {}
-    fn res_6_h(&mut self) {}
-    fn res_6_l(&mut self) {}
-    fn res_6_hl_ptr(&mut self) {}
-    fn res_6_a(&mut self) {}
+    fn rl_d(&mut self) {
+        self.register_d = self.rl(self.register_d);
 
-    fn res_7_b(&mut self) {}
-    fn res_7_c(&mut self) {}
-    fn res_7_d(&mut self) {}
-    fn res_7_e(&mut self) {}
-    fn res_7_h(&mut self) {}
-    fn res_7_l(&mut self) {}
-    fn res_7_hl_ptr(&mut self) {}
-    fn res_7_a(&mut self) {}
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn set_0_b(&mut self) {}
-    fn set_0_c(&mut self) {}
-    fn set_0_d(&mut self) {}
-    fn set_0_e(&mut self) {}
-    fn set_0_h(&mut self) {}
-    fn set_0_l(&mut self) {}
-    fn set_0_hl_ptr(&mut self) {}
-    fn set_0_a(&mut self) {}
+    fn rl_e(&mut self) {
+        self.register_e = self.rl(self.register_e);
 
-    fn set_1_b(&mut self) {}
-    fn set_1_c(&mut self) {}
-    fn set_1_d(&mut self) {}
-    fn set_1_e(&mut self) {}
-    fn set_1_h(&mut self) {}
-    fn set_1_l(&mut self) {}
-    fn set_1_hl_ptr(&mut self) {}
-    fn set_1_a(&mut self) {}
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn set_2_b(&mut self) {}
-    fn set_2_c(&mut self) {}
-    fn set_2_d(&mut self) {}
-    fn set_2_e(&mut self) {}
-    fn set_2_h(&mut self) {}
-    fn set_2_l(&mut self) {}
-    fn set_2_hl_ptr(&mut self) {}
-    fn set_2_a(&mut self) {}
+    fn rl_h(&mut self) {
+        self.register_h = self.rl(self.register_h);
 
-    fn set_3_b(&mut self) {}
-    fn set_3_c(&mut self) {}
-    fn set_3_d(&mut self) {}
-    fn set_3_e(&mut self) {}
-    fn set_3_h(&mut self) {}
-    fn set_3_l(&mut self) {}
-    fn set_3_hl_ptr(&mut self) {}
-    fn set_3_a(&mut self) {}
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn set_4_b(&mut self) {}
-    fn set_4_c(&mut self) {}
-    fn set_4_d(&mut self) {}
-    fn set_4_e(&mut self) {}
-    fn set_4_h(&mut self) {}
-    fn set_4_l(&mut self) {}
-    fn set_4_hl_ptr(&mut self) {}
-    fn set_4_a(&mut self) {}
+    fn rl_l(&mut self) {
+        self.register_l = self.rl(self.register_l);
 
-    fn set_5_b(&mut self) {}
-    fn set_5_c(&mut self) {}
-    fn set_5_d(&mut self) {}
-    fn set_5_e(&mut self) {}
-    fn set_5_h(&mut self) {}
-    fn set_5_l(&mut self) {}
-    fn set_5_hl_ptr(&mut self) {}
-    fn set_5_a(&mut self) {}
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 
-    fn set_6_b(&mut self) {}
-    fn set_6_c(&mut self) {}
-    fn set_6_d(&mut self) {}
-    fn set_6_e(&mut self) {}
-    fn set_6_h(&mut self) {}
-    fn set_6_l(&mut self) {}
-    fn set_6_hl_ptr(&mut self) {}
-    fn set_6_a(&mut self) {}
+    fn rl_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.rl(value);
 
-    fn set_7_b(&mut self) {}
-    fn set_7_c(&mut self) {}
-    fn set_7_d(&mut self) {}
-    fn set_7_e(&mut self) {}
-    fn set_7_h(&mut self) {}
-    fn set_7_l(&mut self) {}
-    fn set_7_hl_ptr(&mut self) {}
-    fn set_7_a(&mut self) {}
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn rl_a(&mut self) {
+        self.register_a = self.rl(self.register_a);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_b(&mut self) {
+        self.register_b = self.rr(self.register_b);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_c(&mut self) {
+        self.register_c = self.rr(self.register_c);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_d(&mut self) {
+        self.register_d = self.rr(self.register_d);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_e(&mut self) {
+        self.register_e = self.rr(self.register_e);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_h(&mut self) {
+        self.register_h = self.rr(self.register_h);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_l(&mut self) {
+        self.register_l = self.rr(self.register_l);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn rr_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.rr(value);
+
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn rr_a(&mut self) {
+        self.register_a = self.rr(self.register_a);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_b(&mut self) {
+        self.register_b = self.sla(self.register_b);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_c(&mut self) {
+        self.register_c = self.sla(self.register_c);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_d(&mut self) {
+        self.register_d = self.sla(self.register_d);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_e(&mut self) {
+        self.register_e = self.sla(self.register_e);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_h(&mut self) {
+        self.register_h = self.sla(self.register_h);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_l(&mut self) {
+        self.register_l = self.sla(self.register_l);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sla_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.sla(value);
+
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn sla_a(&mut self) {
+        self.register_a = self.sla(self.register_a);
+
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_b(&mut self) {
+        self.register_b = self.sra(self.register_b);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_c(&mut self) {
+        self.register_c = self.sra(self.register_c);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_d(&mut self) {
+        self.register_d = self.sra(self.register_d);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_e(&mut self) {
+        self.register_e = self.sra(self.register_e);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_h(&mut self) {
+        self.register_h = self.sra(self.register_h);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_l(&mut self) {
+        self.register_l = self.sra(self.register_l);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn sra_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.sra(value);
+
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn sra_a(&mut self) {
+        self.register_a = self.sra(self.register_a);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_b(&mut self) {
+        self.register_b = self.swap(self.register_b);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_c(&mut self) {
+        self.register_c = self.swap(self.register_c);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_d(&mut self) {
+        self.register_d = self.swap(self.register_d);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_e(&mut self) {
+        self.register_e = self.swap(self.register_e);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_h(&mut self) {
+        self.register_h = self.swap(self.register_h);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_l(&mut self) {
+        self.register_l = self.swap(self.register_l);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn swap_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.swap(value);
+
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn swap_a(&mut self) {
+        self.register_a = self.swap(self.register_a);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_b(&mut self) {
+        self.register_b = self.srl(self.register_b);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_c(&mut self) {
+        self.register_c = self.srl(self.register_c);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_d(&mut self) {
+        self.register_d = self.srl(self.register_d);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_e(&mut self) {
+        self.register_e = self.srl(self.register_e);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_h(&mut self) {
+        self.register_h = self.srl(self.register_h);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_l(&mut self) {
+        self.register_l = self.srl(self.register_l);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn srl_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let result = self.srl(value);
+
+        self.write_u8(addr, result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn srl_a(&mut self) {
+        self.register_a = self.srl(self.register_a);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_b(&mut self) {
+        self.bit(self.register_b, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_c(&mut self) {
+        self.bit(self.register_c, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_d(&mut self) {
+        self.bit(self.register_d, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_e(&mut self) {
+        self.bit(self.register_e, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_h(&mut self) {
+        self.bit(self.register_h, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_l(&mut self) {
+        self.bit(self.register_l, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_0_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_0_a(&mut self) {
+        self.bit(self.register_a, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_b(&mut self) {
+        self.bit(self.register_b, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_c(&mut self) {
+        self.bit(self.register_c, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_d(&mut self) {
+        self.bit(self.register_d, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_e(&mut self) {
+        self.bit(self.register_e, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_h(&mut self) {
+        self.bit(self.register_h, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_l(&mut self) {
+        self.bit(self.register_l, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_1_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_1_a(&mut self) {
+        self.bit(self.register_a, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_b(&mut self) {
+        self.bit(self.register_b, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_c(&mut self) {
+        self.bit(self.register_c, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_d(&mut self) {
+        self.bit(self.register_d, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_e(&mut self) {
+        self.bit(self.register_e, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_h(&mut self) {
+        self.bit(self.register_h, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_l(&mut self) {
+        self.bit(self.register_l, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_2_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_2_a(&mut self) {
+        self.bit(self.register_a, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_b(&mut self) {
+        self.bit(self.register_b, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_c(&mut self) {
+        self.bit(self.register_c, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_d(&mut self) {
+        self.bit(self.register_d, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_e(&mut self) {
+        self.bit(self.register_e, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_h(&mut self) {
+        self.bit(self.register_h, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_l(&mut self) {
+        self.bit(self.register_l, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_3_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_3_a(&mut self) {
+        self.bit(self.register_a, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_b(&mut self) {
+        self.bit(self.register_b, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_c(&mut self) {
+        self.bit(self.register_c, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_d(&mut self) {
+        self.bit(self.register_d, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_e(&mut self) {
+        self.bit(self.register_e, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_h(&mut self) {
+        self.bit(self.register_h, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_l(&mut self) {
+        self.bit(self.register_l, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_4_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_4_a(&mut self) {
+        self.bit(self.register_a, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_b(&mut self) {
+        self.bit(self.register_b, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_c(&mut self) {
+        self.bit(self.register_c, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_d(&mut self) {
+        self.bit(self.register_d, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_e(&mut self) {
+        self.bit(self.register_e, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_h(&mut self) {
+        self.bit(self.register_h, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_l(&mut self) {
+        self.bit(self.register_l, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_5_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_5_a(&mut self) {
+        self.bit(self.register_a, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_b(&mut self) {
+        self.bit(self.register_b, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_c(&mut self) {
+        self.bit(self.register_c, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_d(&mut self) {
+        self.bit(self.register_d, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_e(&mut self) {
+        self.bit(self.register_e, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_h(&mut self) {
+        self.bit(self.register_h, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_l(&mut self) {
+        self.bit(self.register_l, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_6_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_6_a(&mut self) {
+        self.bit(self.register_a, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_b(&mut self) {
+        self.bit(self.register_b, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_c(&mut self) {
+        self.bit(self.register_c, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_d(&mut self) {
+        self.bit(self.register_d, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_e(&mut self) {
+        self.bit(self.register_e, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_h(&mut self) {
+        self.bit(self.register_h, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_l(&mut self) {
+        self.bit(self.register_l, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn bit_7_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        self.bit(value, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn bit_7_a(&mut self) {
+        self.bit(self.register_a, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_b(&mut self) {
+        self.register_b = self.res(self.register_b, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_c(&mut self) {
+        self.register_c = self.res(self.register_c, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_d(&mut self) {
+        self.register_d = self.res(self.register_d, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_e(&mut self) {
+        self.register_e = self.res(self.register_e, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_h(&mut self) {
+        self.register_h = self.res(self.register_h, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_l(&mut self) {
+        self.register_l = self.res(self.register_l, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_0_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 0);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_0_a(&mut self) {
+        self.register_a = self.res(self.register_a, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_b(&mut self) {
+        self.register_b = self.res(self.register_b, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_c(&mut self) {
+        self.register_c = self.res(self.register_c, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_d(&mut self) {
+        self.register_d = self.res(self.register_d, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_e(&mut self) {
+        self.register_e = self.res(self.register_e, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_h(&mut self) {
+        self.register_h = self.res(self.register_h, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_l(&mut self) {
+        self.register_l = self.res(self.register_l, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_1_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 1);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_1_a(&mut self) {
+        self.register_a = self.res(self.register_a, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_b(&mut self) {
+        self.register_b = self.res(self.register_b, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_c(&mut self) {
+        self.register_c = self.res(self.register_c, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_d(&mut self) {
+        self.register_d = self.res(self.register_d, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_e(&mut self) {
+        self.register_e = self.res(self.register_e, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_h(&mut self) {
+        self.register_h = self.res(self.register_h, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_l(&mut self) {
+        self.register_l = self.res(self.register_l, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_2_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 2);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_2_a(&mut self) {
+        self.register_a = self.res(self.register_a, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_b(&mut self) {
+        self.register_b = self.res(self.register_b, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_c(&mut self) {
+        self.register_c = self.res(self.register_c, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_d(&mut self) {
+        self.register_d = self.res(self.register_d, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_e(&mut self) {
+        self.register_e = self.res(self.register_e, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_h(&mut self) {
+        self.register_h = self.res(self.register_h, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_l(&mut self) {
+        self.register_l = self.res(self.register_l, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_3_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 3);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_3_a(&mut self) {
+        self.register_a = self.res(self.register_a, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_b(&mut self) {
+        self.register_b = self.res(self.register_b, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_c(&mut self) {
+        self.register_c = self.res(self.register_c, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_d(&mut self) {
+        self.register_d = self.res(self.register_d, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_e(&mut self) {
+        self.register_e = self.res(self.register_e, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_h(&mut self) {
+        self.register_h = self.res(self.register_h, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_l(&mut self) {
+        self.register_l = self.res(self.register_l, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_4_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 4);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_4_a(&mut self) {
+        self.register_a = self.res(self.register_a, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_b(&mut self) {
+        self.register_b = self.res(self.register_b, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_c(&mut self) {
+        self.register_c = self.res(self.register_c, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_d(&mut self) {
+        self.register_d = self.res(self.register_d, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_e(&mut self) {
+        self.register_e = self.res(self.register_e, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_h(&mut self) {
+        self.register_h = self.res(self.register_h, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_l(&mut self) {
+        self.register_l = self.res(self.register_l, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_5_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 5);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_5_a(&mut self) {
+        self.register_a = self.res(self.register_a, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_b(&mut self) {
+        self.register_b = self.res(self.register_b, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_c(&mut self) {
+        self.register_c = self.res(self.register_c, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_d(&mut self) {
+        self.register_d = self.res(self.register_d, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_e(&mut self) {
+        self.register_e = self.res(self.register_e, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_h(&mut self) {
+        self.register_h = self.res(self.register_h, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_l(&mut self) {
+        self.register_l = self.res(self.register_l, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_6_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 6);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_6_a(&mut self) {
+        self.register_a = self.res(self.register_a, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_b(&mut self) {
+        self.register_b = self.res(self.register_b, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_c(&mut self) {
+        self.register_c = self.res(self.register_c, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_d(&mut self) {
+        self.register_d = self.res(self.register_d, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_e(&mut self) {
+        self.register_e = self.res(self.register_e, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_h(&mut self) {
+        self.register_h = self.res(self.register_h, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_l(&mut self) {
+        self.register_l = self.res(self.register_l, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn res_7_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.res(value, 7);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn res_7_a(&mut self) {
+        self.register_a = self.res(self.register_a, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_0_b(&mut self) {
+        self.register_b = self.set(self.register_b, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_0_c(&mut self) {
+        self.register_c = self.set(self.register_c, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+    fn set_0_d(&mut self) {
+        self.register_d = self.set(self.register_d, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_0_e(&mut self) {
+        self.register_e = self.set(self.register_e, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_0_h(&mut self) {
+        self.register_h = self.set(self.register_h, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_0_l(&mut self) {
+        self.register_l = self.set(self.register_l, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_0_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 0);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_0_a(&mut self) {
+        self.register_a = self.set(self.register_a, 0);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_b(&mut self) {
+        self.register_b = self.set(self.register_b, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_c(&mut self) {
+        self.register_c = self.set(self.register_c, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_d(&mut self) {
+        self.register_d = self.set(self.register_d, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_e(&mut self) {
+        self.register_e = self.set(self.register_e, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_h(&mut self) {
+        self.register_h = self.set(self.register_h, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_l(&mut self) {
+        self.register_l = self.set(self.register_l, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_1_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 1);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_1_a(&mut self) {
+        self.register_a = self.set(self.register_a, 1);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_b(&mut self) {
+        self.register_b = self.set(self.register_b, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_c(&mut self) {
+        self.register_c = self.set(self.register_c, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_d(&mut self) {
+        self.register_d = self.set(self.register_d, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_e(&mut self) {
+        self.register_e = self.set(self.register_e, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_h(&mut self) {
+        self.register_h = self.set(self.register_h, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_l(&mut self) {
+        self.register_l = self.set(self.register_l, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_2_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 2);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_2_a(&mut self) {
+        self.register_a = self.set(self.register_a, 2);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_b(&mut self) {
+        self.register_b = self.set(self.register_b, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_c(&mut self) {
+        self.register_c = self.set(self.register_c, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_d(&mut self) {
+        self.register_d = self.set(self.register_d, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_e(&mut self) {
+        self.register_e = self.set(self.register_e, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_h(&mut self) {
+        self.register_h = self.set(self.register_h, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_l(&mut self) {
+        self.register_l = self.set(self.register_l, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_3_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 3);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_3_a(&mut self) {
+        self.register_a = self.set(self.register_a, 3);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_b(&mut self) {
+        self.register_b = self.set(self.register_b, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_c(&mut self) {
+        self.register_c = self.set(self.register_c, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_d(&mut self) {
+        self.register_d = self.set(self.register_d, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_e(&mut self) {
+        self.register_e = self.set(self.register_e, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_h(&mut self) {
+        self.register_h = self.set(self.register_h, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_l(&mut self) {
+        self.register_l = self.set(self.register_l, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_4_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 4);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_4_a(&mut self) {
+        self.register_a = self.set(self.register_a, 4);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_b(&mut self) {
+        self.register_b = self.set(self.register_b, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_c(&mut self) {
+        self.register_c = self.set(self.register_c, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_d(&mut self) {
+        self.register_d = self.set(self.register_d, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_e(&mut self) {
+        self.register_e = self.set(self.register_e, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_h(&mut self) {
+        self.register_h = self.set(self.register_h, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_l(&mut self) {
+        self.register_l = self.set(self.register_l, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_5_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 5);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_5_a(&mut self) {
+        self.register_a = self.set(self.register_a, 5);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_b(&mut self) {
+        self.register_b = self.set(self.register_b, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_c(&mut self) {
+        self.register_c = self.set(self.register_c, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_d(&mut self) {
+        self.register_d = self.set(self.register_d, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_e(&mut self) {
+        self.register_e = self.set(self.register_e, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_h(&mut self) {
+        self.register_h = self.set(self.register_h, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_l(&mut self) {
+        self.register_l = self.set(self.register_l, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_6_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 6);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_6_a(&mut self) {
+        self.register_a = self.set(self.register_a, 6);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_b(&mut self) {
+        self.register_b = self.set(self.register_b, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_c(&mut self) {
+        self.register_c = self.set(self.register_c, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_d(&mut self) {
+        self.register_d = self.set(self.register_d, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_e(&mut self) {
+        self.register_e = self.set(self.register_e, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_h(&mut self) {
+        self.register_h = self.set(self.register_h, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_l(&mut self) {
+        self.register_l = self.set(self.register_l, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
+
+    fn set_7_hl_ptr(&mut self) {
+        let addr = self.register_concat(self.register_h, self.register_l);
+        let value = self.read_u8(addr);
+        let res_result = self.set(value, 7);
+        self.write_u8(addr, res_result);
+        self.advance_program_counter(2);
+        self.update_cycles(16);
+    }
+
+    fn set_7_a(&mut self) {
+        self.register_a = self.set(self.register_a, 7);
+        self.advance_program_counter(2);
+        self.update_cycles(8);
+    }
 }

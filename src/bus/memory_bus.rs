@@ -60,8 +60,7 @@ impl MemoryBus {
                 self.oam[(addr - 0xFE00) as usize] = data;
             }
 
-            0xFEA0..=0xFEFF => {
-            }
+            0xFEA0..=0xFEFF => {}
 
             0xFF00..=0xFF7F => {
                 println!("Write I/O addr: 0x{:04X}", addr);
