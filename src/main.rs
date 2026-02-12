@@ -5,10 +5,11 @@ use std::u8;
 mod bus;
 mod cartridge;
 mod cpu;
+mod machine;
+mod ppu;
 
-use crate::bus::MemoryBus;
 use crate::cartridge::Cartridge;
-use crate::cpu::Cpu;
+use crate::machine::Emulator;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -22,12 +23,7 @@ fn main() {
     };
 
     let cartridge = Cartridge::load(rom);
+    let mut emulator = Emulator::new(cartridge);
 
-    let bus = MemoryBus::new(cartridge);
-
-    let mut cpu = Cpu::new(bus);
-
-    println!("{}", cpu.memory_bus.cartridge);
-
-    cpu.start();
+    emulator.start();
 }
