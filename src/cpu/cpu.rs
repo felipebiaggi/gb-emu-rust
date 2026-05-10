@@ -2716,11 +2716,11 @@ impl Cpu {
     }
 
     fn cb_prefix(&mut self, bus: &mut MemoryBus) {
-        println!("Enter CB Prefix");
         let inst = self.read_u8(self.program_counter.wrapping_add(1), bus);
         self.advance_program_counter(2);
         self.opcode = inst;
         self.process_cb(inst, bus);
+        self.cycles = self.cycles.wrapping_add(4);
     }
 
     fn call_z_u16(&mut self, bus: &mut MemoryBus) {
@@ -3591,7 +3591,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 0);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_0_a(&mut self) {
@@ -3633,7 +3633,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 1);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_1_a(&mut self) {
@@ -3675,7 +3675,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 2);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_2_a(&mut self) {
@@ -3717,7 +3717,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 3);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_3_a(&mut self) {
@@ -3759,7 +3759,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 4);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_4_a(&mut self) {
@@ -3801,7 +3801,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 5);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_5_a(&mut self) {
@@ -3843,7 +3843,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 6);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_6_a(&mut self) {
@@ -3885,7 +3885,7 @@ impl Cpu {
         let addr = self.register_concat(self.register_h, self.register_l);
         let value = self.read_u8(addr, bus);
         self.bit(value, 7);
-        self.update_cycles(12);
+        self.update_cycles(8);
     }
 
     fn bit_7_a(&mut self) {
