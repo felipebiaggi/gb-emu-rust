@@ -1,10 +1,11 @@
-use std::{fmt, u8, u16};
+use std::fmt;
 
 use super::cartridge_type::CartridgeType;
 use super::destination::Destination;
+use super::mbc::{Mbc, Mbc1, MbcOps, NoMbc};
 
 pub struct Cartridge {
-    pub game_data: Vec<u8>,
+    pub mbc: Mbc,
     pub game_title: String,
     pub manufacturer_code: String,
     pub cgb_flag: u8,
@@ -22,40 +23,44 @@ pub struct Cartridge {
 
 impl Cartridge {
     pub fn read(&self, addr: u16) -> u8 {
-        return self.game_data[addr as usize];
+        self.mbc.read(addr)
     }
 
-    pub fn write(&self, addr: u16, data: u8) {}
+    pub fn write(&mut self, addr: u16, data: u8) {
+        self.mbc.write(addr, data);
+    }
 
     pub fn load(value: Vec<u8>) -> Self {
+        // Parse do header (usa slices/cópias — não consome `value`)
         let game_title = String::from_utf8_lossy(&value[308..324]).to_string();
-
         let manufacturer_code = String::from_utf8_lossy(&value[319..323]).to_string();
-
         let cgb_flag = value[323];
-
         let licensee_code = format!("{}{}", value[324] as char, value[325] as char);
-
         let sgb_flag = value[326];
-
         let cartridge_type = CartridgeType::from(value[327]);
-
         let rom_size = value[328];
-
         let ram_size = value[329];
-
         let destination_code = Destination::from(value[330]);
-
         let old_licensee_code = value[331];
-
         let mask_rom_version_number = value[332];
-
         let header_checksum = value[333];
-
         let global_checksum = u16::from_be_bytes([value[334], value[335]]);
 
+        let ram_size_bytes = ram_size_from_byte(ram_size);
+
+        // Construção da variante (consome `value` movendo-o pra dentro do MBC)
+        let mbc: Mbc = match &cartridge_type {
+            CartridgeType::RomOnly => NoMbc::new(value).into(),
+
+            CartridgeType::Mbc1
+            | CartridgeType::Mbc1Ram
+            | CartridgeType::Mbc1RamBattery => Mbc1::new(value, ram_size_bytes).into(),
+
+            other => panic!("MBC type não suportado ainda: {}", other),
+        };
+
         Self {
-            game_data: value,
+            mbc,
             game_title,
             manufacturer_code,
             cgb_flag,
@@ -70,6 +75,18 @@ impl Cartridge {
             header_checksum,
             global_checksum,
         }
+    }
+}
+
+fn ram_size_from_byte(b: u8) -> usize {
+    match b {
+        0x00 => 0,
+        0x01 => 2 * 1024,    // 2 KB (raro)
+        0x02 => 8 * 1024,    // 8 KB
+        0x03 => 32 * 1024,   // 32 KB (4 banks de 8 KB)
+        0x04 => 128 * 1024,  // 128 KB (16 banks)
+        0x05 => 64 * 1024,   // 64 KB (8 banks)
+        _ => 0,
     }
 }
 
@@ -97,11 +114,6 @@ impl fmt::Display for Cartridge {
         )?;
         writeln!(format, "Header Checksum:     {:#04X}", self.header_checksum)?;
         writeln!(format, "Global Checksum:     {:#06X}", self.global_checksum)?;
-        writeln!(
-            format,
-            "Game Data Size:      {} bytes",
-            self.game_data.len()
-        )?;
         Ok(())
     }
 }

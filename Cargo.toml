@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 bitflags = "2.10.0"
+enum_dispatch = "0.3"
 raylib = "5.5.1"
