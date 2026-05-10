@@ -1,4 +1,16 @@
+use bitflags::bitflags;
 use crate::cartridge::Cartridge;
+
+bitflags! {
+    #[derive(Copy, Clone)]
+    pub struct InterruptFlags: u8 {
+        const VBLANK  =  1 << 0;
+        const LCDSTAT =  1 << 1;
+        const TIMER   =  1 << 2;
+        const SERIAL  =  1 << 3;
+        const JOYPAD  =  1 << 4;
+    }
+}
 
 pub struct MemoryBus {
     pub cartridge: Cartridge,
@@ -69,6 +81,12 @@ impl MemoryBus {
                 // println!("Write I/O addr: 0x{:04X}", addr);
                 if addr == 0xFF0F {
                     self.if_reg = data & 0x1F;
+                } else if addr == 0xFF02 && (data & 0x80) != 0 {
+                    let ch = self.io[(0xFF01 - 0xFF00) as usize];
+                    print!("{}", ch as char);
+                    use std::io::Write;
+                    std::io::stdout().flush().ok();
+                    self.io[(addr - 0xFF00) as usize] = data & 0x7F;
                 } else {
                     self.io[(addr - 0xFF00) as usize] = data;
                 }
@@ -86,8 +104,8 @@ impl MemoryBus {
         }
     }
 
-    pub fn request_interrupt(&mut self, flag_bit: u8) {
-        self.if_reg |= flag_bit & 0x1F;
+    pub fn request_interrupt(&mut self, flag: InterruptFlags) {
+        self.if_reg |= flag.bits() & 0x1F;
         // println!(
             // " request if |= 0x{:02X} -> if=0x{:02X}",
             // flag_bit & 0x1F,

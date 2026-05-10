@@ -1,6 +1,6 @@
-use bitflags::bitflags;
+use bitflags::{Flags, bitflags};
 
-use crate::bus::MemoryBus;
+use crate::bus::{MemoryBus, InterruptFlags};
 
 bitflags! {
     pub struct FFlags: u8 {
@@ -82,23 +82,38 @@ impl Cpu {
     }
 
     pub fn step(&mut self, bus: &mut MemoryBus) -> u8 {
-        //stop e halt temporarios
-        if self.stop {
-            return 0;
+        let if_reg = InterruptFlags::from_bits_truncate(bus.read(0xFF0F));
+        let ie_reg = InterruptFlags::from_bits_truncate(bus.read(0xFFFF));
+        let pending = if_reg & ie_reg;
+
+        if self.halt && !pending.is_empty() {
+            self.halt = false;
         }
 
-        if self.halt {
-            return 4;
+        if self.interruption && !pending.is_empty() {
+            let bit = pending.bits().trailing_zeros() as u8;
+            let vector: u16 = 0x40 + (bit as u16) * 8;
+            let serviced = InterruptFlags::from_bits_truncate(1 << bit);
+
+            self.interruption = false;
+            bus.write(0xFF0F, (if_reg - serviced).bits());
+            self.push_u16(self.program_counter, bus);
+            self.program_counter = vector;
+
+            return 20;
         }
+
+        if self.stop { return 4; }
+        if self.halt { return 4; }
+
+        let promote_at_end = self.ime_pending;
 
         self.cycles = 0;
-
         let inst = bus.read(self.program_counter);
         self.opcode = inst;
-
         self.process(inst, bus);
 
-        if self.ime_pending {
+        if promote_at_end && self.ime_pending {
             self.interruption = true;
             self.ime_pending = false;
         }
@@ -1393,20 +1408,20 @@ impl Cpu {
         let mut carry_out = c;
 
         if !n {
-            if h || (a & 0x0F) > 0x09 {
-                a = a.wrapping_add(0x06);
-            }
+            let mut adjust: u8 = 0;
             if c || a > 0x99 {
-                a = a.wrapping_add(0x60);
+                adjust |= 0x60;
                 carry_out = true;
             }
+            if h || (a & 0x0F) > 0x09 {
+                adjust |= 0x06;
+            }
+            a = a.wrapping_add(adjust);
         } else {
-            if h {
-                a = a.wrapping_sub(0x06);
-            }
-            if c {
-                a = a.wrapping_sub(0x60);
-            }
+            let mut adjust: u8 = 0;
+            if c { adjust |= 0x60; }
+            if h { adjust |= 0x06; }
+            a = a.wrapping_sub(adjust);
         }
 
         self.register_a = a;

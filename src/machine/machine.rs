@@ -1,7 +1,5 @@
-use bitflags::{bitflags, parser};
 use raylib::core::texture::RaylibTexture2D;
 use raylib::prelude::*;
-use std::time::{Duration, Instant};
 
 use crate::bus::MemoryBus;
 use crate::cartridge::Cartridge;
@@ -18,16 +16,6 @@ const GB_W: i32 = 160;
 const GB_H: i32 = 144;
 const CYCLES_PER_FRAME: u64 = 70_224;
 
-bitflags! {
-    pub struct InterruptFlags: u8 {
-        const VBLANK  = 1 << 0;
-        const LCDSTAT = 1 << 1;
-        const TIMER   = 1 << 2;
-        const SERIAL  = 1 << 3;
-        const JOYPAD  = 1 << 4;
-    }
-}
-
 impl Emulator {
     pub fn new(cartridge: Cartridge) -> Self {
         let bus = MemoryBus::new(cartridge);
@@ -35,7 +23,7 @@ impl Emulator {
         Self {
             cpu: Cpu::new(),
             ppu: Ppu::new(),
-            bus: bus,
+            bus,
         }
     }
 
